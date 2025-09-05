@@ -244,14 +244,9 @@ class G15HardwareController:
             return 0
 
     def get_power_mode(self) -> PowerMode:
-        if self.manual_mode:
-            return PowerMode.CUSTOM
-
-        result = self._acpi_call_real("0x14", ["0x0b"])
-        for mode in PowerMode:
-            if mode.value[1] == result:
-                return mode
-        return PowerMode.BALANCED
+        # Retorna o modo atual salvo em memória
+        # O hardware Dell nem sempre reporta corretamente o modo após mudança
+        return self.current_mode
 
     def get_g_mode_status(self) -> bool:
         result = self._acpi_call_real("0x25", ["0x02"])

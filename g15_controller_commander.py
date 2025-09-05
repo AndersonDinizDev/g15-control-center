@@ -487,14 +487,9 @@ class ACPIControllerDirect:
             return 0
 
     def get_power_mode(self) -> PowerMode:
-        if self.manual_mode:
-            return PowerMode.CUSTOM
-
-        result = self._acpi_call_real("0x14", ["0x0b"])
-        for mode in PowerMode:
-            if mode.value[1] == result:
-                return mode
-        return PowerMode.BALANCED
+        # Retorna o modo atual salvo em memória
+        # O hardware Dell nem sempre reporta corretamente o modo após mudança
+        return self.current_mode
 
     def get_g_mode_status(self) -> bool:
         result = self._acpi_call_real("0x25", ["0x02"])
@@ -884,7 +879,10 @@ class FanControlCard(QFrame):
 
         if not self.manual_enabled:
             self.boost_slider.setValue(0)
-            self.boost_changed.emit(self.fan_id, 0)
+            # Só emite o sinal se o manual foi desativado manualmente pelo usuário
+            # Não emite quando é desativado automaticamente por mudança de modo
+            if self.manual_toggle.isChecked() == False:
+                self.boost_changed.emit(self.fan_id, 0)
 
     def update_boost_label(self, value):
         self.boost_label.setText(f"{value}%")
@@ -1165,6 +1163,7 @@ class MainWindow(QMainWindow):
         self.settings = None
         self.custom_message_shown = False
         self.autostart_manager = AutoStartManager()
+        self.mode_changing = False  # Flag para evitar conflitos de atualização
 
         self.setup_ui()
         self.setup_monitoring()
@@ -1388,7 +1387,10 @@ class MainWindow(QMainWindow):
         self.fan1_control.update_boost(data['fan1_boost'])
         self.fan2_control.update_boost(data['fan2_boost'])
 
-        self.power_selector.set_mode(data['power_mode'])
+        # Só atualiza o seletor de modo se não estiver mudando de modo
+        if not self.mode_changing:
+            self.power_selector.set_mode(data['power_mode'])
+        
         self.g_mode_button.set_state(data['g_mode'])
 
         if hasattr(self, 'tray'):
@@ -1403,7 +1405,14 @@ class MainWindow(QMainWindow):
             self.sensor_monitor.update_once()
 
     def on_mode_changed(self, mode: PowerMode):
-        self.acpi.set_power_mode(mode)
+        # Define flag para evitar conflito com atualizações do sensor
+        self.mode_changing = True
+        
+        # Muda o modo no daemon/hardware
+        success = self.acpi.set_power_mode(mode)
+        
+        # Agenda reset da flag após 2 segundos (tempo para o daemon processar)
+        QTimer.singleShot(2000, lambda: setattr(self, 'mode_changing', False))
 
         if mode == PowerMode.CUSTOM:
             if not self.custom_message_shown:
@@ -1411,10 +1420,20 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Custom Mode",
                     "Custom mode activated.\nEnable Manual control in fan cards.")
         else:
+            # Desabilita controles manuais sem disparar eventos
+            self.fan1_control.manual_enabled = False
             self.fan1_control.manual_toggle.setChecked(False)
-            self.fan1_control.toggle_manual()
+            self.fan1_control.manual_toggle.setText("Manual OFF")
+            self.fan1_control.update_manual_button_style(False)
+            self.fan1_control.boost_slider.setEnabled(False)
+            self.fan1_control.boost_slider.setValue(0)
+            
+            self.fan2_control.manual_enabled = False
             self.fan2_control.manual_toggle.setChecked(False)
-            self.fan2_control.toggle_manual()
+            self.fan2_control.manual_toggle.setText("Manual OFF")
+            self.fan2_control.update_manual_button_style(False)
+            self.fan2_control.boost_slider.setEnabled(False)
+            self.fan2_control.boost_slider.setValue(0)
 
     def on_fan_boost_changed(self, fan_id: int, boost: int):
         if self.acpi.current_mode != PowerMode.CUSTOM:
