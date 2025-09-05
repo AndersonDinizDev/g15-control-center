@@ -28,10 +28,10 @@ from PyQt6.QtGui import (
 
 
 class PowerMode(Enum):
-    QUIET = ("Quiet", "0xa3", "#4CAF50")
-    BALANCED = ("Balanced", "0xa0", "#2196F3")
+    QUIET = ("Silencioso", "0xa3", "#4CAF50")
+    BALANCED = ("Balanceado", "0xa0", "#2196F3")
     PERFORMANCE = ("Performance", "0xa1", "#FF9800")
-    CUSTOM = ("Custom", "0xa2", "#9C27B0")
+    CUSTOM = ("Personalizado", "0xa2", "#9C27B0")
 
 
 class G15DaemonClient:
@@ -680,20 +680,20 @@ class ThermalCard(QFrame):
     def get_status_style(self, value):
         if self.unit == "°C":
             if value < 50:
-                return "#4CAF50", "Cool", "#E8F5E9"
+                return "#4CAF50", "Frio", "#E8F5E9"
             elif value < 70:
                 return "#FFC107", "Normal", "#FFF8E1"
             elif value < 85:
-                return "#FF9800", "Warm", "#FFF3E0"
+                return "#FF9800", "Quente", "#FFF3E0"
             else:
-                return "#F44336", "Hot", "#FFEBEE"
+                return "#F44336", "Muito Quente", "#FFEBEE"
         else:
             if value < 2000:
-                return "#2196F3", "Low", "#E3F2FD"
+                return "#2196F3", "Baixo", "#E3F2FD"
             elif value < 4000:
                 return "#4CAF50", "Normal", "#E8F5E9"
             else:
-                return "#FF9800", "High", "#FFF3E0"
+                return "#FF9800", "Alto", "#FFF3E0"
 
 
 class FanControlCard(QFrame):
@@ -743,7 +743,7 @@ class FanControlCard(QFrame):
         header_layout.addStretch()
         header_layout.addWidget(self.rpm_label)
 
-        self.manual_toggle = QPushButton("Manual OFF")
+        self.manual_toggle = QPushButton("Manual DESLIG.")
         self.manual_toggle.setCheckable(True)
         self.manual_toggle.setFixedHeight(32)
         self.manual_toggle.clicked.connect(self.toggle_manual)
@@ -873,7 +873,7 @@ class FanControlCard(QFrame):
 
     def toggle_manual(self):
         self.manual_enabled = self.manual_toggle.isChecked()
-        self.manual_toggle.setText("Manual ON" if self.manual_enabled else "Manual OFF")
+        self.manual_toggle.setText("Manual LIGADO" if self.manual_enabled else "Manual DESLIG.")
         self.update_manual_button_style(self.manual_enabled)
         self.boost_slider.setEnabled(self.manual_enabled)
 
@@ -909,7 +909,7 @@ class GModeButton(QPushButton):
     toggled_signal = pyqtSignal(bool)
 
     def __init__(self):
-        super().__init__("G-MODE OFF")
+        super().__init__("MODO-G DESLIGADO")
         self.setCheckable(True)
         self.setFixedSize(180, 50)
         self.is_on = False
@@ -922,7 +922,7 @@ class GModeButton(QPushButton):
         self.toggled_signal.emit(self.is_on)
 
     def update_display(self):
-        self.setText("G-MODE ON" if self.is_on else "G-MODE OFF")
+        self.setText("MODO-G LIGADO" if self.is_on else "MODO-G DESLIGADO")
         self.update_style(self.is_on)
 
     def set_state(self, is_on):
@@ -989,7 +989,7 @@ class PowerModeSelector(QFrame):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
 
-        title = QLabel("Power Mode")
+        title = QLabel("Modo de Energia")
         title.setStyleSheet("""
             font-size: 14px;
             font-weight: 600;
@@ -1117,7 +1117,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     def create_menu(self):
         menu = QMenu()
 
-        self.g_mode_action = QAction("Toggle G-Mode", self)
+        self.g_mode_action = QAction("Alternar Modo-G", self)
         self.g_mode_action.triggered.connect(self.toggle_g_mode.emit)
         menu.addAction(self.g_mode_action)
 
@@ -1129,11 +1129,11 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         menu.addSeparator()
 
-        show_action = QAction("Show Window", self)
+        show_action = QAction("Mostrar Janela", self)
         show_action.triggered.connect(self.show_window.emit)
         menu.addAction(show_action)
 
-        quit_action = QAction("Quit", self)
+        quit_action = QAction("Sair", self)
         quit_action.triggered.connect(self.quit_app.emit)
         menu.addAction(quit_action)
 
@@ -1146,11 +1146,11 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         self.create_icon()
 
-        status = "ACTIVE" if g_mode else "INACTIVE"
-        self.setToolTip(f"Dell G15 Controller\nG-Mode: {status}\nCPU: {cpu_temp}°C | GPU: {gpu_temp}°C")
+        status = "ATIVO" if g_mode else "INATIVO"
+        self.setToolTip(f"Dell G15 Controller\nModo-G: {status}\nCPU: {cpu_temp}°C | GPU: {gpu_temp}°C")
 
         self.temp_action.setText(f"CPU: {cpu_temp}°C | GPU: {gpu_temp}°C")
-        self.g_mode_action.setText(f"Disable G-Mode" if g_mode else "Enable G-Mode")
+        self.g_mode_action.setText(f"Desabilitar Modo-G" if g_mode else "Habilitar Modo-G")
 
 
 class MainWindow(QMainWindow):
@@ -1196,7 +1196,7 @@ class MainWindow(QMainWindow):
             color: #2C3E50;
         """)
 
-        model_label = QLabel(f"Model: {self.acpi.model}")
+        model_label = QLabel(f"Modelo: {self.acpi.model}")
         model_label.setStyleSheet("""
             font-size: 12px;
             color: #666666;
@@ -1206,24 +1206,11 @@ class MainWindow(QMainWindow):
             border-radius: 12px;
         """)
 
-        mode_label = QLabel("REAL HARDWARE")
-        color = "#27AE60"
-        mode_label.setStyleSheet(f"""
-            font-size: 12px;
-            font-weight: bold;
-            color: {color};
-            padding: 4px 10px;
-            background: white;
-            border: 2px solid {color};
-            border-radius: 12px;
-        """)
-
         self.g_mode_button = GModeButton()
         self.g_mode_button.toggled_signal.connect(self.toggle_g_mode)
 
         header_layout.addWidget(title)
         header_layout.addWidget(model_label)
-        header_layout.addWidget(mode_label)
         header_layout.addStretch()
         header_layout.addWidget(self.g_mode_button)
 
@@ -1257,10 +1244,10 @@ class MainWindow(QMainWindow):
         thermal_layout = QHBoxLayout(thermal_section)
         thermal_layout.setSpacing(15)
 
-        self.cpu_thermal = ThermalCard("CPU Temperature", "°C", 100)
-        self.gpu_thermal = ThermalCard("GPU Temperature", "°C", 100)
-        self.fan1_rpm = ThermalCard("CPU Fan Speed", " RPM", 6000)
-        self.fan2_rpm = ThermalCard("GPU Fan Speed", " RPM", 6000)
+        self.cpu_thermal = ThermalCard("Temperatura da CPU", "°C", 100)
+        self.gpu_thermal = ThermalCard("Temperatura da GPU", "°C", 100)
+        self.fan1_rpm = ThermalCard("Velocidade Ventoinha CPU", " RPM", 6000)
+        self.fan2_rpm = ThermalCard("Velocidade Ventoinha GPU", " RPM", 6000)
 
         thermal_layout.addWidget(self.cpu_thermal)
         thermal_layout.addWidget(self.gpu_thermal)
@@ -1272,8 +1259,8 @@ class MainWindow(QMainWindow):
         fan_layout = QHBoxLayout(fan_section)
         fan_layout.setSpacing(15)
 
-        self.fan1_control = FanControlCard(1, "CPU Fan Control")
-        self.fan2_control = FanControlCard(2, "GPU Fan Control")
+        self.fan1_control = FanControlCard(1, "Controle Ventoinha CPU")
+        self.fan2_control = FanControlCard(2, "Controle Ventoinha GPU")
 
         self.fan1_control.boost_changed.connect(self.on_fan_boost_changed)
         self.fan2_control.boost_changed.connect(self.on_fan_boost_changed)
@@ -1305,12 +1292,12 @@ class MainWindow(QMainWindow):
         info_layout = QVBoxLayout(info_panel)
 
         info_text = QLabel("""
-<b>Instructions:</b><br><br>
-• <b>G-Mode:</b> Toggle for maximum cooling<br>
-• <b>Power Modes:</b> Choose your thermal profile<br>
-• <b>Manual Control:</b> Select Custom mode first<br>
-• <b>System Tray:</b> Double-click to show/hide<br><br>
-<b>Status:</b> Real Hardware""")
+<b>Instruções:</b><br><br>
+• <b>Modo-G:</b> Ativa resfriamento máximo<br>
+• <b>Modos de Energia:</b> Escolha seu perfil térmico<br>
+• <b>Controle Manual:</b> Selecione modo Personalizado primeiro<br>
+• <b>Bandeja do Sistema:</b> Duplo-clique para mostrar/ocultar<br><br>
+<b>Hardware:</b> Controlador Dell G15""")
 
         info_text.setStyleSheet("""
             font-size: 12px;
@@ -1354,7 +1341,7 @@ class MainWindow(QMainWindow):
         settings_layout.addWidget(info_panel, 1)
 
         tabs.addTab(monitor_tab, "Monitor")
-        tabs.addTab(settings_tab, "Settings")
+        tabs.addTab(settings_tab, "Configurações")
 
         main_layout.addLayout(header_layout)
         main_layout.addWidget(tabs)
@@ -1417,8 +1404,8 @@ class MainWindow(QMainWindow):
         if mode == PowerMode.CUSTOM:
             if not self.custom_message_shown:
                 self.custom_message_shown = True
-                QMessageBox.information(self, "Custom Mode",
-                    "Custom mode activated.\nEnable Manual control in fan cards.")
+                QMessageBox.information(self, "Modo Personalizado",
+                    "Modo personalizado ativado.\nHabilite controle Manual nos cartões das ventoinhas.")
         else:
             # Desabilita controles manuais sem disparar eventos
             self.fan1_control.manual_enabled = False
@@ -1437,8 +1424,8 @@ class MainWindow(QMainWindow):
 
     def on_fan_boost_changed(self, fan_id: int, boost: int):
         if self.acpi.current_mode != PowerMode.CUSTOM:
-            QMessageBox.warning(self, "Mode Warning",
-                "Please select Custom mode first.")
+            QMessageBox.warning(self, "Aviso de Modo",
+                "Por favor, selecione o modo Personalizado primeiro.")
             return
 
         self.acpi.set_fan_boost(fan_id, boost)
@@ -1447,24 +1434,24 @@ class MainWindow(QMainWindow):
         try:
             if enabled:
                 if self.autostart_manager.enable():
-                    QMessageBox.information(self, "Autostart Habilitado",
+                    QMessageBox.information(self, "Inicialização Automática Habilitada",
                         "O Dell G15 Controller agora iniciará automaticamente com o sistema.\n\n"
                         "Nota: Se estiver usando o modo daemon, certifique-se de que o "
                         "serviço g15-daemon esteja instalado e habilitado.")
                 else:
                     self.autostart_checkbox.setChecked(False)
                     QMessageBox.warning(self, "Erro",
-                        "Falha ao habilitar autostart. Verifique as permissões.")
+                        "Falha ao habilitar inicialização automática. Verifique as permissões.")
             else:
                 if self.autostart_manager.disable():
-                    QMessageBox.information(self, "Autostart Desabilitado",
+                    QMessageBox.information(self, "Inicialização Automática Desabilitada",
                         "O Dell G15 Controller não iniciará mais automaticamente com o sistema.")
                 else:
                     self.autostart_checkbox.setChecked(True)
                     QMessageBox.warning(self, "Erro",
-                        "Falha ao desabilitar autostart. Verifique as permissões.")
+                        "Falha ao desabilitar inicialização automática. Verifique as permissões.")
         except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Erro ao configurar autostart: {e}")
+            QMessageBox.critical(self, "Erro", f"Erro ao configurar inicialização automática: {e}")
             self.autostart_checkbox.setChecked(not enabled)
 
     def show_and_raise(self):
@@ -1486,7 +1473,7 @@ class MainWindow(QMainWindow):
             self.hide()
             self.tray.showMessage(
                 "Dell G15 Controller",
-                "Minimized to system tray",
+                "Minimizado para bandeja do sistema",
                 QSystemTrayIcon.MessageIcon.Information,
                 2000
             )
