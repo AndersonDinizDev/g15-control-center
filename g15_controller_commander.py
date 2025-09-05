@@ -6,12 +6,16 @@ import subprocess
 import random
 import time
 import glob
+import json
+import socket
+import argparse
+from pathlib import Path
 from enum import Enum
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QGroupBox, QLabel, QSlider, QPushButton,
     QSystemTrayIcon, QMenu, QMessageBox, QFrame, QProgressBar,
-    QGraphicsDropShadowEffect, QTabWidget
+    QGraphicsDropShadowEffect, QTabWidget, QCheckBox
 )
 from PyQt6.QtCore import (
     Qt, QTimer, QThread, pyqtSignal, QSettings,
@@ -30,9 +34,317 @@ class PowerMode(Enum):
     CUSTOM = ("Custom", "0xa2", "#9C27B0")
 
 
+class G15DaemonClient:
+    """
+    Cliente para comunicação com g15_daemon.py
+    Permite usar a interface sem privilégios root quando daemon está rodando.
+    """
+    
+    def __init__(self):
+        self.socket_path = "/tmp/g15-daemon.sock"
+        self.daemon_available = self._check_daemon()
+        self.session_token = None
+        self._cached_data = None
+        self._last_update = 0
+        self._cache_timeout = 1.0  # Cache por 1 segundo
+        
+        if self.daemon_available:
+            self._authenticate()
+            print("=== G15 Client Mode: Connected to Daemon ===")
+        else:
+            print("=== G15 Client Mode: Daemon not available ===")
+    
+    def _check_daemon(self) -> bool:
+        """Verificar se o daemon está rodando"""
+        try:
+            if not os.path.exists(self.socket_path):
+                print(f"DEBUG: Socket file not found: {self.socket_path}")
+                return False
+                
+            # Verificar permissões do socket
+            try:
+                stat_info = os.stat(self.socket_path)
+                print(f"DEBUG: Socket permissions: {oct(stat_info.st_mode)[-3:]}")
+                print(f"DEBUG: Socket owner: {stat_info.st_uid}:{stat_info.st_gid}")
+            except Exception as e:
+                print(f"DEBUG: Failed to check socket permissions: {e}")
+                
+            # Teste de conexão rápida
+            test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            test_socket.settimeout(1.0)
+            test_socket.connect(self.socket_path)
+            test_socket.close()
+            print("DEBUG: Successfully connected to daemon")
+            return True
+        except Exception as e:
+            print(f"DEBUG: Failed to connect to daemon: {e}")
+            return False
+    
+    def _authenticate(self):
+        """Autenticar com o daemon"""
+        try:
+            response = self._send_request({"action": "authenticate"})
+            if response.get("status") == "success":
+                self.session_token = response.get("token")
+        except:
+            self.daemon_available = False
+    
+    def _send_request(self, request_data: dict) -> dict:
+        """Enviar request ao daemon de forma segura"""
+        if not self.daemon_available:
+            return {"status": "error", "message": "Daemon not available"}
+        
+        try:
+            client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client_socket.settimeout(5.0)
+            client_socket.connect(self.socket_path)
+            
+            # Adicionar token se disponível
+            if self.session_token and "token" not in request_data:
+                request_data["token"] = self.session_token
+            
+            request_json = json.dumps(request_data)
+            client_socket.send(request_json.encode('utf-8'))
+            
+            response_data = client_socket.recv(4096)
+            client_socket.close()
+            
+            return json.loads(response_data.decode('utf-8'))
+            
+        except Exception as e:
+            print(f"Error communicating with daemon: {e}")
+            self.daemon_available = False
+            return {"status": "error", "message": str(e)}
+    
+    def _get_all_data(self) -> dict:
+        """Obter todos os dados via single request com cache"""
+        import time
+        
+        current_time = time.time()
+        if (self._cached_data is None or 
+            current_time - self._last_update > self._cache_timeout):
+            
+            response = self._send_request({"action": "get_all_data"})
+            if response.get("status") == "success":
+                self._cached_data = response.get("data", {})
+                self._last_update = current_time
+            else:
+                # Fallback para dados padrão se falhar
+                self._cached_data = {
+                    "temps": {"cpu_temp": 45, "gpu_temp": 50},
+                    "fans": {"fan1_rpm": 2500, "fan2_rpm": 2300, "fan1_boost": 0, "fan2_boost": 0},
+                    "power": {"current_mode": "Balanced", "g_mode": False},
+                    "status": {"model": "Unknown", "hwmon_available": False, "g_mode_active": False}
+                }
+        
+        return self._cached_data
+    
+    def get_cpu_temp(self) -> int:
+        """Obter temperatura CPU via daemon"""
+        data = self._get_all_data()
+        return data.get("temps", {}).get("cpu_temp", 45)
+    
+    def get_gpu_temp(self) -> int:
+        """Obter temperatura GPU via daemon"""
+        data = self._get_all_data()
+        return data.get("temps", {}).get("gpu_temp", 50)
+    
+    def get_fan_rpm(self, fan_id: int) -> int:
+        """Obter RPM da ventoinha via daemon"""
+        data = self._get_all_data()
+        return data.get("fans", {}).get(f"fan{fan_id}_rpm", 2500 if fan_id == 1 else 2300)
+    
+    def get_fan_boost(self, fan_id: int) -> int:
+        """Obter boost da ventoinha via daemon"""
+        data = self._get_all_data()
+        return data.get("fans", {}).get(f"fan{fan_id}_boost", 0)
+    
+    def get_power_mode(self) -> PowerMode:
+        """Obter modo de energia via daemon"""
+        data = self._get_all_data()
+        mode_name = data.get("power", {}).get("current_mode", "Balanced")
+        for mode in PowerMode:
+            if mode.value[0] == mode_name:
+                return mode
+        return PowerMode.BALANCED
+    
+    def get_g_mode_status(self) -> bool:
+        """Verificar status G-Mode via daemon"""
+        data = self._get_all_data()
+        return data.get("power", {}).get("g_mode", False)
+    
+    def set_power_mode(self, mode: PowerMode) -> bool:
+        """Definir modo de energia via daemon"""
+        response = self._send_request({
+            "action": "set_power_mode",
+            "mode": mode.value[0]
+        })
+        return response.get("status") == "success"
+    
+    def set_fan_boost(self, fan_id: int, percentage: int) -> bool:
+        """Definir boost da ventoinha via daemon"""
+        response = self._send_request({
+            "action": "set_fan_boost",
+            "fan_id": fan_id,
+            "percentage": percentage
+        })
+        return response.get("status") == "success"
+    
+    def toggle_g_mode(self) -> bool:
+        """Alternar G-Mode via daemon"""
+        response = self._send_request({"action": "toggle_g_mode"})
+        return response.get("status") == "success"
 
 
-class ACPIController:
+class AutoStartManager:
+    """
+    Gerenciador de autostart seguindo padrões XDG.
+    Cria arquivos .desktop em ~/.config/autostart/
+    """
+    
+    def __init__(self):
+        self.autostart_dir = Path.home() / '.config' / 'autostart'
+        self.desktop_file = self.autostart_dir / 'g15-controller.desktop'
+    
+    def is_enabled(self) -> bool:
+        """Verificar se autostart está habilitado"""
+        return self.desktop_file.exists()
+    
+    def enable(self) -> bool:
+        """Habilitar autostart"""
+        try:
+            # Criar diretório se não existir
+            self.autostart_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Obter caminho absoluto do script atual
+            script_path = os.path.abspath(__file__)
+            python_path = sys.executable
+            
+            desktop_content = f"""[Desktop Entry]
+Name=Dell G15 Controller
+Comment=Dell G15 hardware monitoring and control
+Exec={python_path} "{script_path}"
+Icon=preferences-system
+Terminal=false
+Type=Application
+Categories=System;Settings;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+"""
+            
+            self.desktop_file.write_text(desktop_content)
+            
+            # Definir permissões adequadas
+            os.chmod(self.desktop_file, 0o755)
+            
+            print(f"Autostart enabled: {self.desktop_file}")
+            return True
+            
+        except Exception as e:
+            print(f"Failed to enable autostart: {e}")
+            return False
+    
+    def disable(self) -> bool:
+        """Desabilitar autostart"""
+        try:
+            if self.desktop_file.exists():
+                self.desktop_file.unlink()
+                print(f"Autostart disabled: {self.desktop_file}")
+            return True
+        except Exception as e:
+            print(f"Failed to disable autostart: {e}")
+            return False
+
+
+
+
+class G15ControllerInterface:
+    """
+    Interface unificada que decide entre usar daemon (cliente) ou ACPI direto.
+    Mantém compatibilidade total com a interface existente.
+    """
+    
+    def __init__(self, prefer_daemon=True):
+        self.daemon_client = None
+        self.acpi_controller = None
+        self.using_daemon = False
+        
+        # Tentar usar daemon primeiro se preferido
+        if prefer_daemon:
+            try:
+                self.daemon_client = G15DaemonClient()
+                if self.daemon_client.daemon_available:
+                    self.using_daemon = True
+                    print("Using daemon mode (no root required)")
+                    self.model = "Dell G15 (via daemon)"
+                    return
+            except Exception as e:
+                print(f"Failed to connect to daemon: {e}")
+        
+        # Fallback para modo direto
+        print("Using direct mode (root required)")
+        self.acpi_controller = ACPIControllerDirect()
+        self.model = self.acpi_controller.model
+    
+    def get_cpu_temp(self) -> int:
+        if self.using_daemon:
+            return self.daemon_client.get_cpu_temp()
+        return self.acpi_controller.get_cpu_temp()
+    
+    def get_gpu_temp(self) -> int:
+        if self.using_daemon:
+            return self.daemon_client.get_gpu_temp()
+        return self.acpi_controller.get_gpu_temp()
+    
+    def get_fan_rpm(self, fan_id: int) -> int:
+        if self.using_daemon:
+            return self.daemon_client.get_fan_rpm(fan_id)
+        return self.acpi_controller.get_fan_rpm(fan_id)
+    
+    def get_fan_boost(self, fan_id: int) -> int:
+        if self.using_daemon:
+            return self.daemon_client.get_fan_boost(fan_id)
+        return self.acpi_controller.get_fan_boost(fan_id)
+    
+    def get_power_mode(self) -> PowerMode:
+        if self.using_daemon:
+            return self.daemon_client.get_power_mode()
+        return self.acpi_controller.get_power_mode()
+    
+    def get_g_mode_status(self) -> bool:
+        if self.using_daemon:
+            return self.daemon_client.get_g_mode_status()
+        return self.acpi_controller.get_g_mode_status()
+    
+    def set_power_mode(self, mode: PowerMode) -> bool:
+        if self.using_daemon:
+            return self.daemon_client.set_power_mode(mode)
+        return self.acpi_controller.set_power_mode(mode)
+    
+    def set_fan_boost(self, fan_id: int, percentage: int) -> bool:
+        if self.using_daemon:
+            return self.daemon_client.set_fan_boost(fan_id, percentage)
+        return self.acpi_controller.set_fan_boost(fan_id, percentage)
+    
+    def toggle_g_mode(self) -> bool:
+        if self.using_daemon:
+            return self.daemon_client.toggle_g_mode()
+        return self.acpi_controller.toggle_g_mode()
+    
+    @property
+    def current_mode(self):
+        if self.using_daemon:
+            return self.get_power_mode()
+        return self.acpi_controller.current_mode
+    
+    @property
+    def g_mode_active(self):
+        return self.get_g_mode_status()
+
+
+class ACPIControllerDirect:
+    """Controlador ACPI direto - renomeado da classe original"""
     def __init__(self):
         self.acpi_call_path = "/proc/acpi/call"
         self.acpi_base = r"\_SB.AMWW.WMAX"
@@ -302,23 +614,33 @@ class SensorMonitor(QThread):
         self.acpi = acpi_controller
         self.running = True
 
+    def _collect_data(self):
+        """Coleta dados dos sensores"""
+        return {
+            'cpu_temp': self.acpi.get_cpu_temp(),
+            'gpu_temp': self.acpi.get_gpu_temp(),
+            'fan1_rpm': self.acpi.get_fan_rpm(1),
+            'fan2_rpm': self.acpi.get_fan_rpm(2),
+            'fan1_boost': self.acpi.get_fan_boost(1),
+            'fan2_boost': self.acpi.get_fan_boost(2),
+            'power_mode': self.acpi.get_power_mode(),
+            'g_mode': self.acpi.g_mode_active
+        }
+    
+    def update_once(self):
+        """Força uma atualização única imediata"""
+        try:
+            data = self._collect_data()
+            self.data_updated.emit(data)
+        except Exception as e:
+            print(f"Update once error: {e}")
+
     def run(self):
         update_count = 0
         while self.running:
             try:
                 update_count += 1
-
-                data = {
-                    'cpu_temp': self.acpi.get_cpu_temp(),
-                    'gpu_temp': self.acpi.get_gpu_temp(),
-                    'fan1_rpm': self.acpi.get_fan_rpm(1),
-                    'fan2_rpm': self.acpi.get_fan_rpm(2),
-                    'fan1_boost': self.acpi.get_fan_boost(1),
-                    'fan2_boost': self.acpi.get_fan_boost(2),
-                    'power_mode': self.acpi.get_power_mode(),
-                    'g_mode': self.acpi.g_mode_active
-                }
-
+                data = self._collect_data()
                 self.data_updated.emit(data)
 
                 print(f"[{update_count:04d}] CPU={data['cpu_temp']}°C, GPU={data['gpu_temp']}°C, "
@@ -910,9 +1232,10 @@ class MainWindow(QMainWindow):
         # Força tema consistente
         QApplication.setStyle('Fusion')
 
-        self.acpi = ACPIController()
+        self.acpi = G15ControllerInterface()
         self.settings = None  # Desabilita QSettings para evitar diferenças visuais
         self.custom_message_shown = False
+        self.autostart_manager = AutoStartManager()
 
         self.setup_ui()
         self.setup_monitoring()
@@ -1068,7 +1391,36 @@ class MainWindow(QMainWindow):
         """)
         info_text.setWordWrap(True)
 
+        # Checkbox para autostart
+        self.autostart_checkbox = QCheckBox("Inicializar com o sistema")
+        self.autostart_checkbox.setChecked(self.autostart_manager.is_enabled())
+        self.autostart_checkbox.toggled.connect(self.on_autostart_toggled)
+        self.autostart_checkbox.setStyleSheet("""
+            QCheckBox {
+                font-size: 13px;
+                font-weight: 500;
+                color: #333333;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QCheckBox::indicator:unchecked {
+                border: 2px solid #CCCCCC;
+                border-radius: 3px;
+                background: white;
+            }
+            QCheckBox::indicator:checked {
+                border: 2px solid #2196F3;
+                border-radius: 3px;
+                background: #2196F3;
+                image: url(data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='m13.854 3.646-7.5 7.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6 10.293l7.146-7.147a.5.5 0 0 1 .708.708z'/%3e%3c/svg%3e);
+            }
+        """)
+
         info_layout.addWidget(info_text)
+        info_layout.addWidget(self.autostart_checkbox)
         info_layout.addStretch()
 
         settings_layout.addWidget(self.power_selector)
@@ -1116,6 +1468,14 @@ class MainWindow(QMainWindow):
 
     def toggle_g_mode(self, state=None):
         self.acpi.toggle_g_mode()
+        
+        # Força atualização imediata da interface após toggle
+        if hasattr(self, 'sensor_monitor'):
+            # Invalida cache do cliente daemon para forçar nova leitura
+            if hasattr(self.acpi, 'daemon_client') and self.acpi.daemon_client:
+                self.acpi.daemon_client._cached_data = None
+            # Força uma atualização imediata
+            self.sensor_monitor.update_once()
 
     def on_mode_changed(self, mode: PowerMode):
         self.acpi.set_power_mode(mode)
@@ -1138,6 +1498,32 @@ class MainWindow(QMainWindow):
             return
 
         self.acpi.set_fan_boost(fan_id, boost)
+
+    def on_autostart_toggled(self, enabled: bool):
+        """Gerenciar estado do autostart"""
+        try:
+            if enabled:
+                if self.autostart_manager.enable():
+                    QMessageBox.information(self, "Autostart Habilitado",
+                        "O Dell G15 Controller agora iniciará automaticamente com o sistema.\n\n"
+                        "Nota: Se estiver usando o modo daemon, certifique-se de que o "
+                        "serviço g15-daemon esteja instalado e habilitado.")
+                else:
+                    self.autostart_checkbox.setChecked(False)
+                    QMessageBox.warning(self, "Erro", 
+                        "Falha ao habilitar autostart. Verifique as permissões.")
+            else:
+                if self.autostart_manager.disable():
+                    QMessageBox.information(self, "Autostart Desabilitado",
+                        "O Dell G15 Controller não iniciará mais automaticamente com o sistema.")
+                else:
+                    self.autostart_checkbox.setChecked(True)
+                    QMessageBox.warning(self, "Erro",
+                        "Falha ao desabilitar autostart. Verifique as permissões.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao configurar autostart: {e}")
+            # Reverter checkbox para estado anterior
+            self.autostart_checkbox.setChecked(not enabled)
 
     def show_and_raise(self):
         self.show()

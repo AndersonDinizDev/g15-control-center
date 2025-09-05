@@ -180,19 +180,10 @@ g15-controller-commander/
 └── venv/                       # Ambiente virtual (criado pelo usuário)
 ```
 
-## Contribuindo
+## Aviso Legal
 
-1. Fork o repositório
-2. Criar branch de feature: `git checkout -b nome-da-feature`
-3. Fazer suas alterações e testar completamente
-4. Commit suas mudanças: `git commit -am 'Adicionar nome-da-feature'`
-5. Push para o branch: `git push origin nome-da-feature`
-6. Submeter um Pull Request
+Este software controla diretamente componentes de hardware. Use por sua própria conta e risco. Os autores não são responsáveis por qualquer dano ao hardware que possa ocorrer com o uso deste software.
 
 ## Licença
 
 Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
-
-## Aviso Legal
-
-Este software controla diretamente componentes de hardware. Use por sua própria conta e risco. Os autores não são responsáveis por qualquer dano ao hardware que possa ocorrer com o uso deste software.
