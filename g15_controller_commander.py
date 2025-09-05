@@ -218,339 +218,28 @@ X-GNOME-Autostart-Delay=5
             return False
 
 
-class G15ControllerInterface:
-    def __init__(self, prefer_daemon=True):
-        self.daemon_client = None
-        self.acpi_controller = None
-        self.using_daemon = False
-
-        if prefer_daemon:
-            try:
-                self.daemon_client = G15DaemonClient()
-                if self.daemon_client.daemon_available:
-                    self.using_daemon = True
-                    print("Using daemon mode (no root required)")
-                    self.model = "Dell G15 (via daemon)"
-                    return
-            except Exception as e:
-                print(f"Failed to connect to daemon: {e}")
-
-        print("Using direct mode (root required)")
-        self.acpi_controller = ACPIControllerDirect()
-        self.model = self.acpi_controller.model
-
-    def get_cpu_temp(self) -> int:
-        if self.using_daemon:
-            return self.daemon_client.get_cpu_temp()
-        return self.acpi_controller.get_cpu_temp()
-
-    def get_gpu_temp(self) -> int:
-        if self.using_daemon:
-            return self.daemon_client.get_gpu_temp()
-        return self.acpi_controller.get_gpu_temp()
-
-    def get_fan_rpm(self, fan_id: int) -> int:
-        if self.using_daemon:
-            return self.daemon_client.get_fan_rpm(fan_id)
-        return self.acpi_controller.get_fan_rpm(fan_id)
-
-    def get_fan_boost(self, fan_id: int) -> int:
-        if self.using_daemon:
-            return self.daemon_client.get_fan_boost(fan_id)
-        return self.acpi_controller.get_fan_boost(fan_id)
-
-    def get_power_mode(self) -> PowerMode:
-        if self.using_daemon:
-            return self.daemon_client.get_power_mode()
-        return self.acpi_controller.get_power_mode()
-
-    def get_g_mode_status(self) -> bool:
-        if self.using_daemon:
-            return self.daemon_client.get_g_mode_status()
-        return self.acpi_controller.get_g_mode_status()
-
-    def set_power_mode(self, mode: PowerMode) -> bool:
-        if self.using_daemon:
-            return self.daemon_client.set_power_mode(mode)
-        return self.acpi_controller.set_power_mode(mode)
-
-    def set_fan_boost(self, fan_id: int, percentage: int) -> bool:
-        if self.using_daemon:
-            return self.daemon_client.set_fan_boost(fan_id, percentage)
-        return self.acpi_controller.set_fan_boost(fan_id, percentage)
-
-    def toggle_g_mode(self) -> bool:
-        if self.using_daemon:
-            return self.daemon_client.toggle_g_mode()
-        return self.acpi_controller.toggle_g_mode()
-
-    @property
-    def current_mode(self):
-        if self.using_daemon:
-            return self.get_power_mode()
-        return self.acpi_controller.current_mode
-
-    @property
-    def g_mode_active(self):
-        return self.get_g_mode_status()
 
 
-class ACPIControllerDirect:
-    def __init__(self):
-        self.acpi_call_path = "/proc/acpi/call"
-        self.acpi_base = r"\_SB.AMWW.WMAX"
-        self.current_mode = PowerMode.BALANCED
-        self.g_mode_active = False
-        self.manual_mode = False
-
-        self.hwmon_path = None
-        self.hwmon_fans = {}
-        self.hwmon_temps = {}
-
-        self._check_acpi_availability()
-        self._detect_hwmon_sensors()
-
-        print("=== ACPI Mode: REAL HARDWARE ===")
-        self._detect_model()
-
-    def _check_acpi_availability(self):
-        if not os.path.exists(self.acpi_call_path):
-            print("ERROR: ACPI path not found. Dell G15 hardware not detected.")
-            print("This application requires Dell G15 hardware with ACPI support.")
-            sys.exit(1)
-
-        if os.geteuid() != 0:
-            print("ERROR: This application requires root privileges.")
-            print("Please run with: sudo python3 g15_controller_commander.py")
-            sys.exit(1)
-
-        try:
-            result = subprocess.run(['lsmod'], capture_output=True, text=True)
-            if 'acpi_call' not in result.stdout:
-                print("Loading acpi_call module...")
-                result = subprocess.run(['modprobe', 'acpi_call'], capture_output=True, text=True)
-                if result.returncode != 0:
-                    print("ERROR: Failed to load acpi_call module.")
-                    print("Please install acpi_call-dkms package.")
-                    sys.exit(1)
-        except Exception as e:
-            print(f"ERROR: Failed to check/load acpi_call module: {e}")
-            sys.exit(1)
-
-        try:
-            with open(self.acpi_call_path, 'w') as f:
-                f.write("test")
-            print("ACPI interface is accessible")
-        except Exception as e:
-            print(f"ERROR: Cannot write to ACPI interface: {e}")
-            print("Please ensure you have root privileges and acpi_call module is loaded.")
-            sys.exit(1)
-
-    def _detect_hwmon_sensors(self):
-        dell_hwmon_names = ['dell_smm', 'dell_ddv']
-
-        for hwmon_dir in glob.glob('/sys/class/hwmon/hwmon*'):
-            try:
-                name_file = os.path.join(hwmon_dir, 'name')
-                if os.path.exists(name_file):
-                    with open(name_file, 'r') as f:
-                        hwmon_name = f.read().strip()
-
-                    if hwmon_name in dell_hwmon_names:
-                        self.hwmon_path = hwmon_dir
-                        print(f"Found Dell hwmon: {hwmon_name} at {hwmon_dir}")
-
-                        for temp_file in glob.glob(os.path.join(hwmon_dir, 'temp*_input')):
-                            temp_num = temp_file.split('temp')[1].split('_')[0]
-                            self.hwmon_temps[int(temp_num)] = temp_file
-
-                        for fan_file in glob.glob(os.path.join(hwmon_dir, 'fan*_input')):
-                            fan_num = fan_file.split('fan')[1].split('_')[0]
-                            self.hwmon_fans[int(fan_num)] = fan_file
-
-                        print(f"Detected temperatures: {list(self.hwmon_temps.keys())}")
-                        print(f"Detected fans: {list(self.hwmon_fans.keys())}")
-                        return
-            except Exception as e:
-                continue
-
-        print("WARNING: No Dell hwmon sensors found, using ACPI only")
-
-    def _detect_model(self):
-        try:
-            result = self._acpi_call_real("0x1a", ["0x02", "0x02"])
-            if result and result != "0x0":
-                model_map = {
-                    "0x1": "5511", "0x2": "5515", "0x3": "5520",
-                    "0x4": "5525", "0x5": "5530", "0x6": "5535"
-                }
-                self.model = model_map.get(result, "Unknown")
-                print(f"Detected Dell G15 {self.model}")
-            else:
-                self.model = "Unknown"
-        except:
-            self.model = "Unknown"
-
-    def _read_hwmon_sensor(self, sensor_path: str) -> int:
-        try:
-            with open(sensor_path, 'r') as f:
-                value = int(f.read().strip())
-                return value
-        except Exception as e:
-            print(f"Error reading hwmon sensor {sensor_path}: {e}")
-            return 0
-
-    def _acpi_call_real(self, wmi_code: str, args: list = None) -> str:
-        if args is None:
-            args = []
-
-        while len(args) < 4:
-            args.append("0x00")
-
-        args_str = ', '.join(str(a) for a in args)
-        command = f"{self.acpi_base} 0 {wmi_code} {{{args_str}}}"
-
-        try:
-            with open(self.acpi_call_path, 'w') as f:
-                f.write(command)
-
-            with open(self.acpi_call_path, 'r') as f:
-                result = f.read().strip()
-
-            if result.startswith("{"):
-                result = result.strip("{}").split(",")[0].strip()
-
-            return result if result else "0x0"
-        except Exception as e:
-            print(f"ACPI error: {e}")
-            return "0x0"
-
-    def get_cpu_temp(self) -> int:
-        if self.hwmon_path and 1 in self.hwmon_temps:
-            temp_millidegrees = self._read_hwmon_sensor(self.hwmon_temps[1])
-            if temp_millidegrees > 0:
-                temp_celsius = temp_millidegrees // 1000
-                if 0 <= temp_celsius <= 120:
-                    return temp_celsius
-
-        result = self._acpi_call_real("0x14", ["0x04", "0x01"])
-        try:
-            temp = int(result, 16)
-            if 0 <= temp <= 120:
-                return temp
-        except:
-            pass
-
-        return 45
-
-    def get_gpu_temp(self) -> int:
-        if self.hwmon_path and 2 in self.hwmon_temps:
-            temp_millidegrees = self._read_hwmon_sensor(self.hwmon_temps[2])
-            if temp_millidegrees > 0:
-                temp_celsius = temp_millidegrees // 1000
-                if 0 <= temp_celsius <= 120:
-                    return temp_celsius
-
-        result = self._acpi_call_real("0x14", ["0x04", "0x02"])
-        try:
-            temp = int(result, 16)
-            if 0 <= temp <= 120:
-                return temp
-        except:
-            pass
-
-        return 50
-
-    def get_fan_rpm(self, fan_id: int) -> int:
-        if self.hwmon_path and fan_id in self.hwmon_fans:
-            rpm = self._read_hwmon_sensor(self.hwmon_fans[fan_id])
-            if 0 <= rpm <= 10000:
-                return rpm
-
-        sensor_id = f"0x{0x32 + fan_id - 1:02X}"
-        result = self._acpi_call_real("0x14", ["0x05", sensor_id])
-        try:
-            rpm = int(result, 16)
-            if 0 <= rpm <= 10000:
-                return rpm
-        except:
-            pass
-
-        return 2500 if fan_id == 1 else 2300
-
-    def get_fan_boost(self, fan_id: int) -> int:
-        sensor_id = f"0x{0x32 + fan_id - 1:02X}"
-        result = self._acpi_call_real("0x14", ["0x0c", sensor_id])
-        try:
-            return max(0, min(100, int(result, 16)))
-        except:
-            return 0
-
-    def get_power_mode(self) -> PowerMode:
-        # Retorna o modo atual salvo em memória
-        # O hardware Dell nem sempre reporta corretamente o modo após mudança
-        return self.current_mode
-
-    def get_g_mode_status(self) -> bool:
-        result = self._acpi_call_real("0x25", ["0x02"])
-        return result == "0x1"
-
-    def set_power_mode(self, mode: PowerMode) -> bool:
-        self.current_mode = mode
-        if mode == PowerMode.CUSTOM:
-            self.manual_mode = True
-        else:
-            self.manual_mode = False
-            self._acpi_call_real("0x15", ["0x01", mode.value[1]])
-        print(f"Power mode set to: {mode.value[0]}")
-        return True
-
-    def set_fan_boost(self, fan_id: int, percentage: int) -> bool:
-        sensor_id = f"0x{0x32 + fan_id - 1:02X}"
-        hex_value = f"0x{percentage:02X}"
-        self._acpi_call_real("0x15", ["0x02", sensor_id, hex_value])
-        print(f"Fan {fan_id} boost set to {percentage}%")
-        return True
-
-    def enable_g_mode(self) -> bool:
-        self.g_mode_active = True
-        self._acpi_call_real("0x15", ["0x01", "0xab"])
-        self._acpi_call_real("0x25", ["0x01", "0x01"])
-        print("G-Mode ENABLED")
-        return True
-
-    def disable_g_mode(self) -> bool:
-        self.g_mode_active = False
-        self._acpi_call_real("0x15", ["0x01", self.current_mode.value[1]])
-        self._acpi_call_real("0x25", ["0x01", "0x00"])
-        print("G-Mode DISABLED")
-        return True
-
-    def toggle_g_mode(self) -> bool:
-        if self.g_mode_active:
-            return self.disable_g_mode()
-        else:
-            return self.enable_g_mode()
 
 
 class SensorMonitor(QThread):
     data_updated = pyqtSignal(dict)
 
-    def __init__(self, acpi_controller):
+    def __init__(self, daemon_client):
         super().__init__()
-        self.acpi = acpi_controller
+        self.daemon_client = daemon_client
         self.running = True
 
     def _collect_data(self):
         return {
-            'cpu_temp': self.acpi.get_cpu_temp(),
-            'gpu_temp': self.acpi.get_gpu_temp(),
-            'fan1_rpm': self.acpi.get_fan_rpm(1),
-            'fan2_rpm': self.acpi.get_fan_rpm(2),
-            'fan1_boost': self.acpi.get_fan_boost(1),
-            'fan2_boost': self.acpi.get_fan_boost(2),
-            'power_mode': self.acpi.get_power_mode(),
-            'g_mode': self.acpi.g_mode_active
+            'cpu_temp': self.daemon_client.get_cpu_temp(),
+            'gpu_temp': self.daemon_client.get_gpu_temp(),
+            'fan1_rpm': self.daemon_client.get_fan_rpm(1),
+            'fan2_rpm': self.daemon_client.get_fan_rpm(2),
+            'fan1_boost': self.daemon_client.get_fan_boost(1),
+            'fan2_boost': self.daemon_client.get_fan_boost(2),
+            'power_mode': self.daemon_client.get_power_mode(),
+            'g_mode': self.daemon_client.get_g_mode_status()
         }
 
     def update_once(self):
@@ -1159,16 +848,74 @@ class MainWindow(QMainWindow):
 
         QApplication.setStyle('Fusion')
 
-        self.acpi = G15ControllerInterface()
+        self.daemon_client = G15DaemonClient()
+        if not self.daemon_client.daemon_available:
+            self.show_daemon_required_dialog()
+            return
+
         self.settings = None
         self.custom_message_shown = False
         self.autostart_manager = AutoStartManager()
-        self.mode_changing = False  # Flag para evitar conflitos de atualização
+        self.mode_changing = False
 
         self.setup_ui()
         self.setup_monitoring()
         self.setup_tray()
-        self.check_privileges()
+
+    def show_daemon_required_dialog(self):
+        app = QApplication.instance()
+        
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Critical)
+        msg.setWindowTitle("G15 Daemon Obrigatório")
+        msg.setText("<b>G15 Daemon não encontrado!</b>")
+        
+        detailed_text = """O Dell G15 Controller agora funciona APENAS com o daemon.
+
+<b>Para resolver:</b>
+
+1. Inicie o daemon como root:
+   <code>sudo python3 g15_daemon.py</code>
+
+2. Ou instale como serviço do sistema
+
+3. Depois execute novamente este programa
+
+<b>Vantagens do modo daemon:</b>
+• Interface não precisa de root
+• Maior segurança
+• Melhor desempenho"""
+        
+        msg.setInformativeText(detailed_text)
+        
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.setDefaultButton(QMessageBox.StandardButton.Ok)
+        
+        msg.setStyleSheet("""
+            QMessageBox {
+                background-color: #f8f9fa;
+                font-size: 12px;
+            }
+            QMessageBox QLabel {
+                color: #333333;
+                padding: 10px;
+            }
+            QMessageBox QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+                min-width: 80px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        
+        msg.exec()
+        app.quit()
 
     def setup_ui(self):
         self.setWindowTitle("Dell G15 Control Center")
@@ -1196,7 +943,7 @@ class MainWindow(QMainWindow):
             color: #2C3E50;
         """)
 
-        model_label = QLabel(f"Modelo: {self.acpi.model}")
+        model_label = QLabel("Modelo: Dell G15 (via daemon)")
         model_label.setStyleSheet("""
             font-size: 12px;
             color: #666666;
@@ -1347,7 +1094,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(tabs)
 
     def setup_monitoring(self):
-        self.monitor = SensorMonitor(self.acpi)
+        self.monitor = SensorMonitor(self.daemon_client)
         self.monitor.data_updated.connect(self.update_sensor_data)
         self.monitor.start()
 
@@ -1360,8 +1107,6 @@ class MainWindow(QMainWindow):
             self.tray.activated.connect(self.on_tray_activated)
             self.tray.show()
 
-    def check_privileges(self):
-        pass
 
     def update_sensor_data(self, data):
         self.cpu_thermal.update_value(data['cpu_temp'])
@@ -1384,21 +1129,14 @@ class MainWindow(QMainWindow):
             self.tray.update_status(data['g_mode'], data['cpu_temp'], data['gpu_temp'])
 
     def toggle_g_mode(self, state=None):
-        self.acpi.toggle_g_mode()
-
-        if hasattr(self, 'sensor_monitor'):
-            if hasattr(self.acpi, 'daemon_client') and self.acpi.daemon_client:
-                self.acpi.daemon_client._cached_data = None
-            self.sensor_monitor.update_once()
+        self.daemon_client.toggle_g_mode()
+        self.daemon_client._cached_data = None
+        if hasattr(self, 'monitor'):
+            self.monitor.update_once()
 
     def on_mode_changed(self, mode: PowerMode):
-        # Define flag para evitar conflito com atualizações do sensor
         self.mode_changing = True
-        
-        # Muda o modo no daemon/hardware
-        success = self.acpi.set_power_mode(mode)
-        
-        # Agenda reset da flag após 2 segundos (tempo para o daemon processar)
+        success = self.daemon_client.set_power_mode(mode)
         QTimer.singleShot(2000, lambda: setattr(self, 'mode_changing', False))
 
         if mode == PowerMode.CUSTOM:
@@ -1423,12 +1161,12 @@ class MainWindow(QMainWindow):
             self.fan2_control.boost_slider.setValue(0)
 
     def on_fan_boost_changed(self, fan_id: int, boost: int):
-        if self.acpi.current_mode != PowerMode.CUSTOM:
+        if self.daemon_client.get_power_mode() != PowerMode.CUSTOM:
             QMessageBox.warning(self, "Aviso de Modo",
                 "Por favor, selecione o modo Personalizado primeiro.")
             return
 
-        self.acpi.set_fan_boost(fan_id, boost)
+        self.daemon_client.set_fan_boost(fan_id, boost)
 
     def on_autostart_toggled(self, enabled: bool):
         try:
@@ -1464,22 +1202,23 @@ class MainWindow(QMainWindow):
             self.show_and_raise()
 
     def quit_application(self):
-        if self.monitor:
+        if hasattr(self, 'monitor') and self.monitor:
             self.monitor.stop()
         QApplication.instance().quit()
 
     def closeEvent(self, event):
         if hasattr(self, 'tray') and self.tray.isVisible():
             self.hide()
-            self.tray.showMessage(
-                "Dell G15 Controller",
-                "Minimizado para bandeja do sistema",
-                QSystemTrayIcon.MessageIcon.Information,
-                2000
-            )
+            if hasattr(self, 'tray'):
+                self.tray.showMessage(
+                    "Dell G15 Controller",
+                    "Minimizado para bandeja do sistema",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    2000
+                )
             event.ignore()
         else:
-            if self.monitor:
+            if hasattr(self, 'monitor') and self.monitor:
                 self.monitor.stop()
             event.accept()
 
@@ -1494,14 +1233,18 @@ def main():
     app.setFont(font)
 
     window = MainWindow()
+    
+    if not hasattr(window, 'daemon_client') or not window.daemon_client.daemon_available:
+        return
+    
     window.show()
 
     print("=" * 60)
-    print(" Dell G15 Control Center - v3.0 FINAL")
+    print(" Dell G15 Control Center - v4.0 DAEMON-ONLY")
     print("=" * 60)
-    print("Mode: REAL HARDWARE")
-    print("Root: YES")
-    print("Model: " + window.acpi.model)
+    print("Mode: DAEMON CLIENT")
+    print("Root: NO")
+    print("Model: Dell G15 (via daemon)")
     print("=" * 60)
     print("Monitoring started - values should update every second...")
     print("=" * 60)
