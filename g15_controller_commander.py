@@ -866,51 +866,36 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         
         msg = QMessageBox()
-        msg.setIcon(QMessageBox.Icon.Critical)
-        msg.setWindowTitle("G15 Daemon Obrigatório")
-        msg.setText("<b>G15 Daemon não encontrado!</b>")
-        
-        detailed_text = """O Dell G15 Controller agora funciona APENAS com o daemon.
-
-<b>Para resolver:</b>
-
-1. Inicie o daemon como root:
-   <code>sudo python3 g15_daemon.py</code>
-
-2. Ou instale como serviço do sistema
-
-3. Depois execute novamente este programa
-
-<b>Vantagens do modo daemon:</b>
-• Interface não precisa de root
-• Maior segurança
-• Melhor desempenho"""
-        
-        msg.setInformativeText(detailed_text)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle("Dell G15 Controller")
+        msg.setText("<b>G15 Daemon obrigatório</b>")
+        msg.setInformativeText("Execute primeiro:\n<b>sudo python3 g15_daemon.py</b>\n\nDepois inicie este programa novamente.")
         
         msg.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg.setDefaultButton(QMessageBox.StandardButton.Ok)
         
         msg.setStyleSheet("""
             QMessageBox {
-                background-color: #f8f9fa;
-                font-size: 12px;
+                background: #F5F6FA;
+                font-family: "Segoe UI", Arial, sans-serif;
             }
             QMessageBox QLabel {
-                color: #333333;
-                padding: 10px;
+                color: #2C3E50;
+                font-size: 12px;
+                padding: 15px;
             }
             QMessageBox QPushButton {
-                background-color: #dc3545;
+                background: #2196F3;
                 color: white;
                 border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
+                padding: 8px 24px;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 11px;
                 min-width: 80px;
             }
             QMessageBox QPushButton:hover {
-                background-color: #c82333;
+                background: #1976D2;
             }
         """)
         

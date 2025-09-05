@@ -1,6 +1,6 @@
 # Dell G15 Controller Commander
 
-Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 executando Linux. Fornece monitoramento de hardware em tempo real e controle de ventoinhas com uma interface PyQt6 elegante.
+Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 executando Linux. Funciona com arquitetura client-daemon para máxima segurança, fornecendo monitoramento de hardware em tempo real e controle de ventoinhas.
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![PyQt6](https://img.shields.io/badge/PyQt6-6.4%2B-green)
@@ -16,7 +16,7 @@ Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 e
 - **Alternância G-Mode**: Ativar/desativar modo gaming para resfriamento máximo
 - **Integração com Bandeja do Sistema**: Minimizar para bandeja com controles de acesso rápido
 - **Interface Moderna**: Interface limpa e responsiva com feedback visual em tempo real
-- **Integração de Hardware**: Chamadas ACPI diretas + fallback para sensores hwmon
+- **Arquitetura Segura**: Cliente sem root + Daemon com privilégios para controle de hardware
 
 ## Requisitos
 
@@ -24,7 +24,7 @@ Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 e
 - **Sistema Operacional**: Linux (testado no Linux Mint, Ubuntu, Debian)
 - **Hardware**: Notebook gamer Dell G15 (5511, 5515, 5520, 5525, 5530, 5535)
 - **Python**: 3.8 ou superior
-- **Privilégios**: Acesso root necessário para controle de hardware
+- **Privilégios**: Daemon requer root, interface roda como usuário normal
 
 ### Dependências
 - **acpi-call-dkms**: Comunicação ACPI com BIOS
@@ -80,21 +80,35 @@ sudo modprobe acpi_call
 ## Uso
 
 ### Início Rápido
+
+**1. Primeiro, inicie o daemon (como root):**
 ```bash
 # Certifique-se de estar no diretório do projeto
 cd g15-controller-commander
 
-# Ativar ambiente virtual (se não estiver ativo)
+# Ativar ambiente virtual
 source venv/bin/activate
 
-# Executar a aplicação com privilégios root
-sudo python3 g15_controller_commander.py
+# Iniciar daemon (requer root)
+sudo python3 g15_daemon.py
 ```
 
-### Notas Importantes
-- **Privilégios root são obrigatórios** para controle de hardware
-- A aplicação **sairá com erro** se não executada como root
-- Certifique-se de que o módulo `acpi_call` esteja carregado antes de executar
+**2. Em outro terminal, execute a interface (usuário normal):**
+```bash
+# No mesmo diretório do projeto
+cd g15-controller-commander
+
+# Ativar ambiente virtual
+source venv/bin/activate
+
+# Executar interface (SEM sudo)
+python3 g15_controller_commander.py
+```
+
+### Nova Arquitetura
+- **Daemon**: Roda como root, controla hardware via ACPI/hwmon
+- **Interface**: Roda como usuário, comunica com daemon via Unix socket
+- **Segurança**: Separação de privilégios, interface sem root
 
 ### Visão Geral da Interface
 
@@ -136,10 +150,14 @@ sudo python3 g15_controller_commander.py
 
 ### Problemas Comuns
 
-#### "ERROR: This application requires root privileges"
-**Solução**: Sempre executar com `sudo`:
+#### "G15 Daemon obrigatório"
+**Solução**: Primeiro iniciar o daemon:
 ```bash
-sudo python3 g15_controller_commander.py
+sudo python3 g15_daemon.py
+```
+Depois executar a interface em outro terminal:
+```bash
+python3 g15_controller_commander.py
 ```
 
 #### "ERROR: ACPI path not found"
@@ -164,20 +182,21 @@ sensors | grep -E "(dell|fan|temp)"
 sudo apt install libxcb-cursor0 # Ubuntu/Debian
 ```
 
-### Modo Debug
-Executar com saída verbosa para diagnosticar problemas:
+### Logs do Daemon
+O daemon mantém logs em `/var/log/g15-daemon.log` para debug:
 ```bash
-sudo python3 g15_controller_commander.py --verbose  # Se implementado
+sudo tail -f /var/log/g15-daemon.log
 ```
 
 ## Estrutura do Projeto
 ```
 g15-controller-commander/
-├── g15_controller_commander.py  # Aplicação principal
-├── requirements.txt             # Dependências Python
-├── README.md                   # Este arquivo
-├── .gitignore                  # Regras de ignorar Git
-└── venv/                       # Ambiente virtual (criado pelo usuário)
+├── g15_controller_commander.py  # Interface cliente (PyQt6)
+├── g15_daemon.py               # Daemon de controle (root)
+├── requirements.txt            # Dependências Python
+├── README.md                  # Este arquivo
+├── .gitignore                 # Regras de ignorar Git
+└── venv/                      # Ambiente virtual (criado pelo usuário)
 ```
 
 ## Aviso Legal
