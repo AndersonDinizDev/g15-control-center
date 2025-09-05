@@ -35,191 +35,155 @@ class PowerMode(Enum):
 
 
 class G15DaemonClient:
-    """
-    Cliente para comunicação com g15_daemon.py
-    Permite usar a interface sem privilégios root quando daemon está rodando.
-    """
-    
     def __init__(self):
         self.socket_path = "/tmp/g15-daemon.sock"
         self.daemon_available = self._check_daemon()
         self.session_token = None
         self._cached_data = None
         self._last_update = 0
-        self._cache_timeout = 1.0  # Cache por 1 segundo
-        
+        self._cache_timeout = 1.0
+
         if self.daemon_available:
             self._authenticate()
             print("=== G15 Client Mode: Connected to Daemon ===")
         else:
             print("=== G15 Client Mode: Daemon not available ===")
-    
+
     def _check_daemon(self) -> bool:
-        """Verificar se o daemon está rodando"""
         try:
             if not os.path.exists(self.socket_path):
-                print(f"DEBUG: Socket file not found: {self.socket_path}")
                 return False
-                
-            # Verificar permissões do socket
+
             try:
                 stat_info = os.stat(self.socket_path)
-                print(f"DEBUG: Socket permissions: {oct(stat_info.st_mode)[-3:]}")
-                print(f"DEBUG: Socket owner: {stat_info.st_uid}:{stat_info.st_gid}")
             except Exception as e:
-                print(f"DEBUG: Failed to check socket permissions: {e}")
-                
-            # Teste de conexão rápida
+                return False
+
             test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             test_socket.settimeout(1.0)
             test_socket.connect(self.socket_path)
             test_socket.close()
-            print("DEBUG: Successfully connected to daemon")
             return True
         except Exception as e:
-            print(f"DEBUG: Failed to connect to daemon: {e}")
             return False
-    
+
     def _authenticate(self):
-        """Autenticar com o daemon"""
         try:
             response = self._send_request({"action": "authenticate"})
             if response.get("status") == "success":
                 self.session_token = response.get("token")
         except:
             self.daemon_available = False
-    
+
     def _send_request(self, request_data: dict) -> dict:
-        """Enviar request ao daemon de forma segura"""
         if not self.daemon_available:
             return {"status": "error", "message": "Daemon not available"}
-        
+
         try:
             client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             client_socket.settimeout(5.0)
             client_socket.connect(self.socket_path)
-            
-            # Adicionar token se disponível
+
             if self.session_token and "token" not in request_data:
                 request_data["token"] = self.session_token
-            
+
             request_json = json.dumps(request_data)
             client_socket.send(request_json.encode('utf-8'))
-            
+
             response_data = client_socket.recv(4096)
             client_socket.close()
-            
+
             return json.loads(response_data.decode('utf-8'))
-            
+
         except Exception as e:
             print(f"Error communicating with daemon: {e}")
             self.daemon_available = False
             return {"status": "error", "message": str(e)}
-    
+
     def _get_all_data(self) -> dict:
-        """Obter todos os dados via single request com cache"""
         import time
-        
+
         current_time = time.time()
-        if (self._cached_data is None or 
+        if (self._cached_data is None or
             current_time - self._last_update > self._cache_timeout):
-            
+
             response = self._send_request({"action": "get_all_data"})
             if response.get("status") == "success":
                 self._cached_data = response.get("data", {})
                 self._last_update = current_time
             else:
-                # Fallback para dados padrão se falhar
                 self._cached_data = {
                     "temps": {"cpu_temp": 45, "gpu_temp": 50},
                     "fans": {"fan1_rpm": 2500, "fan2_rpm": 2300, "fan1_boost": 0, "fan2_boost": 0},
                     "power": {"current_mode": "Balanced", "g_mode": False},
                     "status": {"model": "Unknown", "hwmon_available": False, "g_mode_active": False}
                 }
-        
+
         return self._cached_data
-    
+
     def get_cpu_temp(self) -> int:
-        """Obter temperatura CPU via daemon"""
         data = self._get_all_data()
         return data.get("temps", {}).get("cpu_temp", 45)
-    
+
     def get_gpu_temp(self) -> int:
-        """Obter temperatura GPU via daemon"""
         data = self._get_all_data()
         return data.get("temps", {}).get("gpu_temp", 50)
-    
+
     def get_fan_rpm(self, fan_id: int) -> int:
-        """Obter RPM da ventoinha via daemon"""
         data = self._get_all_data()
         return data.get("fans", {}).get(f"fan{fan_id}_rpm", 2500 if fan_id == 1 else 2300)
-    
+
     def get_fan_boost(self, fan_id: int) -> int:
-        """Obter boost da ventoinha via daemon"""
         data = self._get_all_data()
         return data.get("fans", {}).get(f"fan{fan_id}_boost", 0)
-    
+
     def get_power_mode(self) -> PowerMode:
-        """Obter modo de energia via daemon"""
         data = self._get_all_data()
         mode_name = data.get("power", {}).get("current_mode", "Balanced")
         for mode in PowerMode:
             if mode.value[0] == mode_name:
                 return mode
         return PowerMode.BALANCED
-    
+
     def get_g_mode_status(self) -> bool:
-        """Verificar status G-Mode via daemon"""
         data = self._get_all_data()
         return data.get("power", {}).get("g_mode", False)
-    
+
     def set_power_mode(self, mode: PowerMode) -> bool:
-        """Definir modo de energia via daemon"""
         response = self._send_request({
             "action": "set_power_mode",
             "mode": mode.value[0]
         })
         return response.get("status") == "success"
-    
+
     def set_fan_boost(self, fan_id: int, percentage: int) -> bool:
-        """Definir boost da ventoinha via daemon"""
         response = self._send_request({
             "action": "set_fan_boost",
             "fan_id": fan_id,
             "percentage": percentage
         })
         return response.get("status") == "success"
-    
+
     def toggle_g_mode(self) -> bool:
-        """Alternar G-Mode via daemon"""
         response = self._send_request({"action": "toggle_g_mode"})
         return response.get("status") == "success"
 
 
 class AutoStartManager:
-    """
-    Gerenciador de autostart seguindo padrões XDG.
-    Cria arquivos .desktop em ~/.config/autostart/
-    """
-    
     def __init__(self):
         self.autostart_dir = Path.home() / '.config' / 'autostart'
         self.desktop_file = self.autostart_dir / 'g15-controller.desktop'
-    
+
     def is_enabled(self) -> bool:
-        """Verificar se autostart está habilitado"""
         return self.desktop_file.exists()
-    
+
     def enable(self) -> bool:
-        """Habilitar autostart"""
         try:
-            # Criar diretório se não existir
             self.autostart_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Obter caminho absoluto do script atual
+
             script_path = os.path.abspath(__file__)
             python_path = sys.executable
-            
+
             desktop_content = f"""[Desktop Entry]
 Name=Dell G15 Controller
 Comment=Dell G15 hardware monitoring and control
@@ -232,21 +196,18 @@ StartupNotify=false
 X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=5
 """
-            
+
             self.desktop_file.write_text(desktop_content)
-            
-            # Definir permissões adequadas
             os.chmod(self.desktop_file, 0o755)
-            
+
             print(f"Autostart enabled: {self.desktop_file}")
             return True
-            
+
         except Exception as e:
             print(f"Failed to enable autostart: {e}")
             return False
-    
+
     def disable(self) -> bool:
-        """Desabilitar autostart"""
         try:
             if self.desktop_file.exists():
                 self.desktop_file.unlink()
@@ -257,20 +218,12 @@ X-GNOME-Autostart-Delay=5
             return False
 
 
-
-
 class G15ControllerInterface:
-    """
-    Interface unificada que decide entre usar daemon (cliente) ou ACPI direto.
-    Mantém compatibilidade total com a interface existente.
-    """
-    
     def __init__(self, prefer_daemon=True):
         self.daemon_client = None
         self.acpi_controller = None
         self.using_daemon = False
-        
-        # Tentar usar daemon primeiro se preferido
+
         if prefer_daemon:
             try:
                 self.daemon_client = G15DaemonClient()
@@ -281,93 +234,86 @@ class G15ControllerInterface:
                     return
             except Exception as e:
                 print(f"Failed to connect to daemon: {e}")
-        
-        # Fallback para modo direto
+
         print("Using direct mode (root required)")
         self.acpi_controller = ACPIControllerDirect()
         self.model = self.acpi_controller.model
-    
+
     def get_cpu_temp(self) -> int:
         if self.using_daemon:
             return self.daemon_client.get_cpu_temp()
         return self.acpi_controller.get_cpu_temp()
-    
+
     def get_gpu_temp(self) -> int:
         if self.using_daemon:
             return self.daemon_client.get_gpu_temp()
         return self.acpi_controller.get_gpu_temp()
-    
+
     def get_fan_rpm(self, fan_id: int) -> int:
         if self.using_daemon:
             return self.daemon_client.get_fan_rpm(fan_id)
         return self.acpi_controller.get_fan_rpm(fan_id)
-    
+
     def get_fan_boost(self, fan_id: int) -> int:
         if self.using_daemon:
             return self.daemon_client.get_fan_boost(fan_id)
         return self.acpi_controller.get_fan_boost(fan_id)
-    
+
     def get_power_mode(self) -> PowerMode:
         if self.using_daemon:
             return self.daemon_client.get_power_mode()
         return self.acpi_controller.get_power_mode()
-    
+
     def get_g_mode_status(self) -> bool:
         if self.using_daemon:
             return self.daemon_client.get_g_mode_status()
         return self.acpi_controller.get_g_mode_status()
-    
+
     def set_power_mode(self, mode: PowerMode) -> bool:
         if self.using_daemon:
             return self.daemon_client.set_power_mode(mode)
         return self.acpi_controller.set_power_mode(mode)
-    
+
     def set_fan_boost(self, fan_id: int, percentage: int) -> bool:
         if self.using_daemon:
             return self.daemon_client.set_fan_boost(fan_id, percentage)
         return self.acpi_controller.set_fan_boost(fan_id, percentage)
-    
+
     def toggle_g_mode(self) -> bool:
         if self.using_daemon:
             return self.daemon_client.toggle_g_mode()
         return self.acpi_controller.toggle_g_mode()
-    
+
     @property
     def current_mode(self):
         if self.using_daemon:
             return self.get_power_mode()
         return self.acpi_controller.current_mode
-    
+
     @property
     def g_mode_active(self):
         return self.get_g_mode_status()
 
 
 class ACPIControllerDirect:
-    """Controlador ACPI direto - renomeado da classe original"""
     def __init__(self):
         self.acpi_call_path = "/proc/acpi/call"
         self.acpi_base = r"\_SB.AMWW.WMAX"
         self.current_mode = PowerMode.BALANCED
         self.g_mode_active = False
         self.manual_mode = False
-        
-        # Caminhos dos sensores hwmon (serão detectados automaticamente)
+
         self.hwmon_path = None
         self.hwmon_fans = {}
         self.hwmon_temps = {}
 
-        # Verifica disponibilidade ACPI - obrigatório
         self._check_acpi_availability()
-        
-        # Detecta sensores hwmon Dell
         self._detect_hwmon_sensors()
-        
+
         print("=== ACPI Mode: REAL HARDWARE ===")
         self._detect_model()
 
     def _check_acpi_availability(self):
-        """Verifica se ACPI está disponível e temos permissão - obrigatório"""
         if not os.path.exists(self.acpi_call_path):
             print("ERROR: ACPI path not found. Dell G15 hardware not detected.")
             print("This application requires Dell G15 hardware with ACPI support.")
@@ -378,7 +324,6 @@ class ACPIControllerDirect:
             print("Please run with: sudo python3 g15_controller_commander.py")
             sys.exit(1)
 
-        # Tenta carregar módulo
         try:
             result = subprocess.run(['lsmod'], capture_output=True, text=True)
             if 'acpi_call' not in result.stdout:
@@ -392,7 +337,6 @@ class ACPIControllerDirect:
             print(f"ERROR: Failed to check/load acpi_call module: {e}")
             sys.exit(1)
 
-        # Testa escrita
         try:
             with open(self.acpi_call_path, 'w') as f:
                 f.write("test")
@@ -403,38 +347,35 @@ class ACPIControllerDirect:
             sys.exit(1)
 
     def _detect_hwmon_sensors(self):
-        """Detecta automaticamente sensores hwmon Dell"""
         dell_hwmon_names = ['dell_smm', 'dell_ddv']
-        
+
         for hwmon_dir in glob.glob('/sys/class/hwmon/hwmon*'):
             try:
                 name_file = os.path.join(hwmon_dir, 'name')
                 if os.path.exists(name_file):
                     with open(name_file, 'r') as f:
                         hwmon_name = f.read().strip()
-                    
+
                     if hwmon_name in dell_hwmon_names:
                         self.hwmon_path = hwmon_dir
                         print(f"Found Dell hwmon: {hwmon_name} at {hwmon_dir}")
-                        
-                        # Detecta sensores de temperatura disponíveis
+
                         for temp_file in glob.glob(os.path.join(hwmon_dir, 'temp*_input')):
                             temp_num = temp_file.split('temp')[1].split('_')[0]
                             self.hwmon_temps[int(temp_num)] = temp_file
-                        
-                        # Detecta sensores de ventoinha disponíveis  
+
                         for fan_file in glob.glob(os.path.join(hwmon_dir, 'fan*_input')):
                             fan_num = fan_file.split('fan')[1].split('_')[0]
                             self.hwmon_fans[int(fan_num)] = fan_file
-                            
+
                         print(f"Detected temperatures: {list(self.hwmon_temps.keys())}")
                         print(f"Detected fans: {list(self.hwmon_fans.keys())}")
                         return
             except Exception as e:
                 continue
-        
+
         print("WARNING: No Dell hwmon sensors found, using ACPI only")
-    
+
     def _detect_model(self):
         try:
             result = self._acpi_call_real("0x1a", ["0x02", "0x02"])
@@ -451,7 +392,6 @@ class ACPIControllerDirect:
             self.model = "Unknown"
 
     def _read_hwmon_sensor(self, sensor_path: str) -> int:
-        """Lê valor de um sensor hwmon"""
         try:
             with open(sensor_path, 'r') as f:
                 value = int(f.read().strip())
@@ -459,9 +399,8 @@ class ACPIControllerDirect:
         except Exception as e:
             print(f"Error reading hwmon sensor {sensor_path}: {e}")
             return 0
-    
+
     def _acpi_call_real(self, wmi_code: str, args: list = None) -> str:
-        """Chamada ACPI real para hardware"""
         if args is None:
             args = []
 
@@ -478,7 +417,6 @@ class ACPIControllerDirect:
             with open(self.acpi_call_path, 'r') as f:
                 result = f.read().strip()
 
-            # Parse result
             if result.startswith("{"):
                 result = result.strip("{}").split(",")[0].strip()
 
@@ -488,15 +426,13 @@ class ACPIControllerDirect:
             return "0x0"
 
     def get_cpu_temp(self) -> int:
-        # Primeiro tenta hwmon (mais confiável)
         if self.hwmon_path and 1 in self.hwmon_temps:
             temp_millidegrees = self._read_hwmon_sensor(self.hwmon_temps[1])
             if temp_millidegrees > 0:
                 temp_celsius = temp_millidegrees // 1000
                 if 0 <= temp_celsius <= 120:
                     return temp_celsius
-        
-        # Fallback para ACPI
+
         result = self._acpi_call_real("0x14", ["0x04", "0x01"])
         try:
             temp = int(result, 16)
@@ -504,19 +440,17 @@ class ACPIControllerDirect:
                 return temp
         except:
             pass
-        
+
         return 45
 
     def get_gpu_temp(self) -> int:
-        # Primeiro tenta hwmon (mais confiável)
         if self.hwmon_path and 2 in self.hwmon_temps:
             temp_millidegrees = self._read_hwmon_sensor(self.hwmon_temps[2])
             if temp_millidegrees > 0:
                 temp_celsius = temp_millidegrees // 1000
                 if 0 <= temp_celsius <= 120:
                     return temp_celsius
-        
-        # Fallback para ACPI
+
         result = self._acpi_call_real("0x14", ["0x04", "0x02"])
         try:
             temp = int(result, 16)
@@ -524,17 +458,15 @@ class ACPIControllerDirect:
                 return temp
         except:
             pass
-        
+
         return 50
 
     def get_fan_rpm(self, fan_id: int) -> int:
-        # Primeiro tenta hwmon (mais confiável)
         if self.hwmon_path and fan_id in self.hwmon_fans:
             rpm = self._read_hwmon_sensor(self.hwmon_fans[fan_id])
             if 0 <= rpm <= 10000:
                 return rpm
-        
-        # Fallback para ACPI
+
         sensor_id = f"0x{0x32 + fan_id - 1:02X}"
         result = self._acpi_call_real("0x14", ["0x05", sensor_id])
         try:
@@ -543,7 +475,7 @@ class ACPIControllerDirect:
                 return rpm
         except:
             pass
-        
+
         return 2500 if fan_id == 1 else 2300
 
     def get_fan_boost(self, fan_id: int) -> int:
@@ -615,7 +547,6 @@ class SensorMonitor(QThread):
         self.running = True
 
     def _collect_data(self):
-        """Coleta dados dos sensores"""
         return {
             'cpu_temp': self.acpi.get_cpu_temp(),
             'gpu_temp': self.acpi.get_gpu_temp(),
@@ -626,9 +557,8 @@ class SensorMonitor(QThread):
             'power_mode': self.acpi.get_power_mode(),
             'g_mode': self.acpi.g_mode_active
         }
-    
+
     def update_once(self):
-        """Força uma atualização única imediata"""
         try:
             data = self._collect_data()
             self.data_updated.emit(data)
@@ -1229,11 +1159,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Força tema consistente
         QApplication.setStyle('Fusion')
 
         self.acpi = G15ControllerInterface()
-        self.settings = None  # Desabilita QSettings para evitar diferenças visuais
+        self.settings = None
         self.custom_message_shown = False
         self.autostart_manager = AutoStartManager()
 
@@ -1391,7 +1320,6 @@ class MainWindow(QMainWindow):
         """)
         info_text.setWordWrap(True)
 
-        # Checkbox para autostart
         self.autostart_checkbox = QCheckBox("Inicializar com o sistema")
         self.autostart_checkbox.setChecked(self.autostart_manager.is_enabled())
         self.autostart_checkbox.toggled.connect(self.on_autostart_toggled)
@@ -1468,13 +1396,10 @@ class MainWindow(QMainWindow):
 
     def toggle_g_mode(self, state=None):
         self.acpi.toggle_g_mode()
-        
-        # Força atualização imediata da interface após toggle
+
         if hasattr(self, 'sensor_monitor'):
-            # Invalida cache do cliente daemon para forçar nova leitura
             if hasattr(self.acpi, 'daemon_client') and self.acpi.daemon_client:
                 self.acpi.daemon_client._cached_data = None
-            # Força uma atualização imediata
             self.sensor_monitor.update_once()
 
     def on_mode_changed(self, mode: PowerMode):
@@ -1500,7 +1425,6 @@ class MainWindow(QMainWindow):
         self.acpi.set_fan_boost(fan_id, boost)
 
     def on_autostart_toggled(self, enabled: bool):
-        """Gerenciar estado do autostart"""
         try:
             if enabled:
                 if self.autostart_manager.enable():
@@ -1510,7 +1434,7 @@ class MainWindow(QMainWindow):
                         "serviço g15-daemon esteja instalado e habilitado.")
                 else:
                     self.autostart_checkbox.setChecked(False)
-                    QMessageBox.warning(self, "Erro", 
+                    QMessageBox.warning(self, "Erro",
                         "Falha ao habilitar autostart. Verifique as permissões.")
             else:
                 if self.autostart_manager.disable():
@@ -1522,7 +1446,6 @@ class MainWindow(QMainWindow):
                         "Falha ao desabilitar autostart. Verifique as permissões.")
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao configurar autostart: {e}")
-            # Reverter checkbox para estado anterior
             self.autostart_checkbox.setChecked(not enabled)
 
     def show_and_raise(self):
@@ -1559,10 +1482,8 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    # Força tema consistente
     app.setStyle('Fusion')
 
-    # Fonte padrão
     font = QFont("Segoe UI", 10)
     app.setFont(font)
 
