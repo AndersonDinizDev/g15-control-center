@@ -115,7 +115,7 @@ class G15DaemonClient:
                 self._cached_data = {
                     "temps": {"cpu_temp": 45, "gpu_temp": 50},
                     "fans": {"fan1_rpm": 2500, "fan2_rpm": 2300, "fan1_boost": 0, "fan2_boost": 0},
-                    "power": {"current_mode": "Balanced", "g_mode": False},
+                    "power": {"current_mode": "Balanceado", "g_mode": False},
                     "status": {"model": "Unknown", "hwmon_available": False, "g_mode_active": False}
                 }
 
@@ -139,7 +139,7 @@ class G15DaemonClient:
 
     def get_power_mode(self) -> PowerMode:
         data = self._get_all_data()
-        mode_name = data.get("power", {}).get("current_mode", "Balanced")
+        mode_name = data.get("power", {}).get("current_mode", "Balanceado")
         for mode in PowerMode:
             if mode.value[0] == mode_name:
                 return mode
@@ -1410,14 +1410,14 @@ class MainWindow(QMainWindow):
             # Desabilita controles manuais sem disparar eventos
             self.fan1_control.manual_enabled = False
             self.fan1_control.manual_toggle.setChecked(False)
-            self.fan1_control.manual_toggle.setText("Manual OFF")
+            self.fan1_control.manual_toggle.setText("Manual DESLIG.")
             self.fan1_control.update_manual_button_style(False)
             self.fan1_control.boost_slider.setEnabled(False)
             self.fan1_control.boost_slider.setValue(0)
             
             self.fan2_control.manual_enabled = False
             self.fan2_control.manual_toggle.setChecked(False)
-            self.fan2_control.manual_toggle.setText("Manual OFF")
+            self.fan2_control.manual_toggle.setText("Manual DESLIG.")
             self.fan2_control.update_manual_button_style(False)
             self.fan2_control.boost_slider.setEnabled(False)
             self.fan2_control.boost_slider.setValue(0)

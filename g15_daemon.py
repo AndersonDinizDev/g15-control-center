@@ -17,10 +17,10 @@ import secrets
 
 
 class PowerMode(Enum):
-    QUIET = ("Quiet", "0xa3", "#4CAF50")
-    BALANCED = ("Balanced", "0xa0", "#2196F3")
+    QUIET = ("Silencioso", "0xa3", "#4CAF50")
+    BALANCED = ("Balanceado", "0xa0", "#2196F3")
     PERFORMANCE = ("Performance", "0xa1", "#FF9800")
-    CUSTOM = ("Custom", "0xa2", "#9C27B0")
+    CUSTOM = ("Personalizado", "0xa2", "#9C27B0")
 
 
 class G15HardwareController:
