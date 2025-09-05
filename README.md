@@ -56,7 +56,7 @@ yay -S acpi_call # ou instalar do AUR
 
 ### 2. Clonar o Repositório
 ```bash
-git clone https://github.com/seu-usuario/g15-controller-commander.git
+git clone https://github.com/AndersonDinizDev/g15-controller-commander.git
 cd g15-controller-commander
 ```
 
