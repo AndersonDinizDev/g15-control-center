@@ -64,7 +64,7 @@ check_root() {
 }
 
 confirm_uninstall() {
-    echo -e "${YELLOW}Esta operação irá remover completamente o Dell G15 Controller Commander.${NC}"
+    echo -e "${YELLOW}Esta operação irá remover completamente o Dell G15 Control Center.${NC}"
     echo
     echo "Itens que serão removidos:"
     echo -e "  • Aplicação: ${RED}$INSTALL_DIR${NC}"
@@ -291,19 +291,19 @@ show_completion_info() {
     echo
     echo -e "${GREEN}Desinstalação concluída com sucesso!${NC}"
     echo
-    echo -e "${CYAN}Obrigado por usar o Dell G15 Controller Commander!${NC}"
+    echo -e "${CYAN}Obrigado por usar o Dell G15 Control Center!${NC}"
     echo
 }
 
 main() {
     echo -e "${RED}"
     echo "╔══════════════════════════════════════════════════════╗"
-    echo "║          Dell G15 Controller Commander               ║"
+    echo "║          Dell G15 Control Center                     ║"
     echo "║                Desinstalador v1.0                   ║"
     echo "╚══════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     
-    log "Iniciando desinstalação do Dell G15 Controller Commander..."
+    log "Iniciando desinstalação do Dell G15 Control Center..."
     
     check_root
     confirm_uninstall

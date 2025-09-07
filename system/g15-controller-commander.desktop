@@ -1,8 +1,8 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Dell G15 Controller
-Name[pt_BR]=Dell G15 Controller
+Name=Dell G15 Control Center
+Name[pt_BR]=Dell G15 Control Center
 Comment=Centro de controle para notebooks Dell G15
 Comment[pt_BR]=Centro de controle para notebooks Dell G15
 GenericName=Hardware Controller
@@ -21,7 +21,6 @@ Categories=System;HardwareSettings;Settings;Qt;
 MimeType=
 
 OnlyShowIn=GNOME;KDE;XFCE;MATE;Cinnamon;Unity;
-NotShowIn=
 
 StartupWMClass=g15_controller_commander
 NoDisplay=false

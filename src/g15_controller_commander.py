@@ -192,7 +192,7 @@ class AutoStartManager:
             python_path = sys.executable
 
             desktop_content = f"""[Desktop Entry]
-Name=Dell G15 Controller
+Name=Dell G15 Control Center
 Comment=Dell G15 hardware monitoring and control
 Exec={python_path} "{script_path}"
 Icon=preferences-system
@@ -845,7 +845,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.create_icon()
 
         status = "ATIVO" if g_mode else "INATIVO"
-        self.setToolTip(f"Dell G15 Controller\nModo-G: {status}\nCPU: {cpu_temp}°C | GPU: {gpu_temp}°C")
+        self.setToolTip(f"Dell G15 Control Center\nModo-G: {status}\nCPU: {cpu_temp}°C | GPU: {gpu_temp}°C")
 
         self.temp_action.setText(f"CPU: {cpu_temp}°C | GPU: {gpu_temp}°C")
         self.g_mode_action.setText(f"Desabilitar Modo-G" if g_mode else "Habilitar Modo-G")
@@ -878,7 +878,7 @@ class MainWindow(QMainWindow):
         
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setWindowTitle("Dell G15 Controller")
+        msg.setWindowTitle("Dell G15 Control Center")
         msg.setText("<b>G15 Daemon obrigatório</b>")
         msg.setInformativeText("Execute primeiro:\n<b>sudo python3 g15_daemon.py</b>\n\nDepois inicie este programa novamente.")
         
@@ -1187,7 +1187,7 @@ class MainWindow(QMainWindow):
             if enabled:
                 if self.autostart_manager.enable():
                     QMessageBox.information(self, "Inicialização Automática Habilitada",
-                        "O Dell G15 Controller agora iniciará automaticamente com o sistema.\n\n"
+                        "O Dell G15 Control Center agora iniciará automaticamente com o sistema.\n\n"
                         "Nota: Se estiver usando o modo daemon, certifique-se de que o "
                         "serviço g15-daemon esteja instalado e habilitado.")
                 else:
@@ -1197,7 +1197,7 @@ class MainWindow(QMainWindow):
             else:
                 if self.autostart_manager.disable():
                     QMessageBox.information(self, "Inicialização Automática Desabilitada",
-                        "O Dell G15 Controller não iniciará mais automaticamente com o sistema.")
+                        "O Dell G15 Control Center não iniciará mais automaticamente com o sistema.")
                 else:
                     self.autostart_checkbox.setChecked(True)
                     QMessageBox.warning(self, "Erro",
@@ -1225,7 +1225,7 @@ class MainWindow(QMainWindow):
             self.hide()
             if hasattr(self, 'tray'):
                 self.tray.showMessage(
-                    "Dell G15 Controller",
+                    "Dell G15 Control Center",
                     "Minimizado para bandeja do sistema",
                     QSystemTrayIcon.MessageIcon.Information,
                     2000

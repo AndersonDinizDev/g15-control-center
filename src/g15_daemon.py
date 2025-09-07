@@ -900,7 +900,7 @@ def signal_handler(signum, frame):
 
 
 def main():
-    print("Starting Dell G15 Controller Daemon...")
+    print("Starting Dell G15 Control Center Daemon...")
     print("WARNING: This daemon runs with root privileges")
     print("All operations are logged for security audit")
     print("Configuration will be saved to /etc/g15-daemon/config.json")

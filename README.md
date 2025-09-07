@@ -1,4 +1,4 @@
-# Dell G15 Controller Commander
+# Dell G15 Control Center
 
 Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 executando Linux. Funciona com arquitetura client-daemon para máxima segurança, fornecendo monitoramento de hardware em tempo real e controle de ventoinhas.
 
@@ -60,7 +60,7 @@ sudo ./install.sh
 **Após a instalação automática:**
 
 **Interface Gráfica:**
-- Menu de aplicações → "Dell G15 Controller"
+- Menu de aplicações → "Dell G15 Control Center"
 - Ou execute: `g15-controller`
 
 **Tecla G-Mode:**
@@ -155,7 +155,7 @@ sudo tail -f /var/log/g15-daemon.log
 
 ## Desinstalação
 
-Para remover completamente o Dell G15 Controller Commander:
+Para remover completamente o Dell G15 Control Center:
 
 ```bash
 cd g15-controller-commander

@@ -1,5 +1,5 @@
 [Unit]
-Description=Dell G15 Controller Daemon
+Description=Dell G15 Control Center Daemon
 After=multi-user.target
 ConditionPathExists=/proc/acpi/call
 

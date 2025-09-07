@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dell G15 Controller Commander
+Dell G15 Control Center
 
 Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 executando Linux.
 Funciona com arquitetura client-daemon para máxima segurança, fornecendo monitoramento 

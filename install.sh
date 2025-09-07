@@ -284,12 +284,12 @@ show_completion_info() {
 main() {
     echo -e "${BLUE}"
     echo "╔══════════════════════════════════════════════════════╗"
-    echo "║          Dell G15 Controller Commander               ║"
+    echo "║          Dell G15 Control Center                     ║"
     echo "║                 Instalador v1.0                     ║"
     echo "╚══════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     
-    log "Iniciando instalação do Dell G15 Controller Commander..."
+    log "Iniciando instalação do Dell G15 Control Center..."
     
     check_root
     detect_distro
