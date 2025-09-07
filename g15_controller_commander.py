@@ -1120,6 +1120,12 @@ class MainWindow(QMainWindow):
         self.fan1_control.update_rpm(data['fan1_rpm'])
         self.fan2_control.update_rpm(data['fan2_rpm'])
         
+        g_mode_active = data['g_mode']
+        
+        self.power_selector.setEnabled(not g_mode_active)
+        self.fan1_control.setEnabled(not g_mode_active)
+        self.fan2_control.setEnabled(not g_mode_active)
+        
         if not self.initial_sync_done:
             if data['power_mode'] == PowerMode.CUSTOM:
                 self.fan1_control.sync_manual_state(
