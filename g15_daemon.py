@@ -301,20 +301,15 @@ class G15HardwareController:
             if g_mode:
                 self.enable_g_mode(save_config=False)
             
-            # Aplica perfis de ventoinha se em modo Personalizado
             if mode_name == 'Personalizado':
                 fan_profiles = config.get('fan_profiles', {})
-                cpu_boost = fan_profiles.get('cpu_fan_boost', 0)
-                gpu_boost = fan_profiles.get('gpu_fan_boost', 0)
-                cpu_manual = fan_profiles.get('cpu_manual', False)
-                gpu_manual = fan_profiles.get('gpu_manual', False)
-                
-                if cpu_manual:
-                    self.manual_fan_control[1] = True
-                    self.set_fan_boost(1, cpu_boost, save_config=False)
-                if gpu_manual:
-                    self.manual_fan_control[2] = True
-                    self.set_fan_boost(2, gpu_boost, save_config=False)
+                for fan_id in [1, 2]:
+                    fan_key = f'{"cpu" if fan_id == 1 else "gpu"}_fan_boost'
+                    manual_key = f'{"cpu" if fan_id == 1 else "gpu"}_manual'
+                    
+                    if fan_profiles.get(manual_key, False):
+                        self.manual_fan_control[fan_id] = True
+                        self.set_fan_boost(fan_id, fan_profiles.get(fan_key, 0), save_config=False)
             
             self.logger.info("Configuration applied successfully")
             
@@ -341,7 +336,7 @@ class G15HardwareController:
             self.config_manager.save(config)
             
         except Exception as e:
-            self.logger.error(f"Failed to save current config: {e}")
+            self.logger.error(f"Config save failed: {e}")
 
     def _read_hwmon_sensor(self, sensor_path: str) -> int:
         try:
@@ -519,7 +514,6 @@ class G15HardwareController:
                 'fan_boosts': self.current_fan_boosts.copy(),
                 'manual_control': self.manual_fan_control.copy()
             }
-            self.logger.info(f"Saving state before G-Mode: {self.pre_gmode_state}")
         
         self.g_mode_active = True
         
@@ -537,7 +531,6 @@ class G15HardwareController:
         self.g_mode_active = False
         
         self._acpi_call_real("0x25", ["0x01", "0x00"])
-        
         time.sleep(0.1)
         
         if self.pre_gmode_state:
@@ -545,28 +538,17 @@ class G15HardwareController:
             fan_boosts = self.pre_gmode_state['fan_boosts']
             manual_control = self.pre_gmode_state['manual_control']
             
-            self.logger.info(f"Restoring state: mode={mode.value[0]}, boosts={fan_boosts}, manual={manual_control}")
-            
-            self._acpi_call_real("0x15", ["0x01", mode.value[1]])
-            self.current_mode = mode
-            
+            self._acpi_call_real("0x15", ["0x01", PowerMode.BALANCED.value[1]])
             time.sleep(0.1)
             
             if mode == PowerMode.CUSTOM:
-                self.manual_mode = True
-                self.current_fan_boosts = fan_boosts.copy()
-                self.manual_fan_control = manual_control.copy()
+                self.set_power_mode(mode, save_config=False)
                 
                 for fan_id in [1, 2]:
-                    if manual_control.get(fan_id, False) and fan_boosts.get(fan_id, 0) > 0:
-                        sensor_id = f"0x{0x32 + fan_id - 1:02X}"
-                        hex_value = f"0x{fan_boosts.get(fan_id, 0):02X}"
-                        self.logger.info(f"Restoring fan {fan_id} to {fan_boosts.get(fan_id, 0)}%")
-                        self._acpi_call_real("0x15", ["0x02", sensor_id, hex_value])
+                    if manual_control.get(fan_id, False):
+                        self.set_fan_boost(fan_id, fan_boosts.get(fan_id, 0), save_config=False, is_manual=True)
             else:
-                self.manual_mode = False
-                self.current_fan_boosts = {1: 0, 2: 0}
-                self.manual_fan_control = {1: False, 2: False}
+                self.set_power_mode(mode, save_config=False)
             
             self.pre_gmode_state = None
         else:
