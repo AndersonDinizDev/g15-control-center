@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "g15-controller-commander"
+name = "g15-control-center"
 version = "1.0.0"
 authors = [
     {name = "Anderson Diniz", email = "anderson@exemplo.com"},
@@ -48,7 +48,7 @@ dev = [
 "Source" = "https://github.com/AndersonDinizDev/g15-controller-commander"
 
 [project.scripts]
-g15-controller = "src.g15_controller_commander:main"
+g15-controller = "src.g15_control_center:main"
 g15-daemon = "src.g15_daemon:main"
 
 [tool.setuptools]

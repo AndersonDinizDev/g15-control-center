@@ -3,7 +3,7 @@
 set -euo pipefail
 
 
-readonly APP_NAME="g15-controller-commander"
+readonly APP_NAME="g15-control-center"
 readonly INSTALL_DIR="/opt/g15-controller"
 readonly BIN_LINK="/usr/local/bin/g15-controller"
 readonly SERVICE_FILE="/etc/systemd/system/g15-daemon.service"
@@ -116,7 +116,7 @@ remove_application() {
     if [[ -d "$INSTALL_DIR" ]]; then
         log "Terminando processos da aplicação..."
         execute "pkill -f g15_daemon.py || true"
-        execute "pkill -f g15_controller_commander.py || true"
+        execute "pkill -f g15_control_center.py || true"
         
         sleep 2
         

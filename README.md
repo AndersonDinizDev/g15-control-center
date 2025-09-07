@@ -174,13 +174,13 @@ sudo ./uninstall.sh
 ```
 g15-controller-commander/
 ├── src/                        # Código fonte
-│   ├── g15_controller_commander.py  # Interface cliente (PyQt6)
+│   ├── g15_control_center.py  # Interface cliente (PyQt6)
 │   ├── g15_daemon.py               # Daemon de controle (root)
 │   └── __init__.py
 ├── system/                     # Arquivos de sistema
 │   ├── g15-daemon.service      # Serviço systemd
-│   ├── g15-controller-commander.desktop  # Atalho desktop
-│   ├── g15-controller-commander.svg      # Ícone
+│   ├── g15-control-center.desktop  # Atalho desktop
+│   ├── g15-control-center.svg      # Ícone
 │   └── 90-dell-g15-gmode.hwdb  # Mapeamento tecla G-Mode
 ├── install.sh                  # Instalador automático
 ├── uninstall.sh               # Desinstalador

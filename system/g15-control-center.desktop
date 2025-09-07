@@ -10,7 +10,7 @@ GenericName[pt_BR]=Controlador de Hardware
 Keywords=dell;g15;fan;temperature;gaming;hardware;control;thermal;
 Keywords[pt_BR]=dell;g15;ventoinha;temperatura;gaming;hardware;controle;térmico;
 
-Exec=/opt/g15-controller/venv/bin/python /opt/g15-controller/src/g15_controller_commander.py
+Exec=/opt/g15-controller/venv/bin/python /opt/g15-controller/src/g15_control_center.py
 TryExec=/opt/g15-controller/venv/bin/python
 Path=/opt/g15-controller/
 Icon=/opt/g15-controller/icon.svg
@@ -22,7 +22,7 @@ MimeType=
 
 OnlyShowIn=GNOME;KDE;XFCE;MATE;Cinnamon;Unity;
 
-StartupWMClass=g15_controller_commander
+StartupWMClass=g15_control_center
 NoDisplay=false
 Hidden=false
 

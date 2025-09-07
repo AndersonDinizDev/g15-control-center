@@ -4,7 +4,7 @@ set -euo pipefail
 
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly APP_NAME="g15-controller-commander"
+readonly APP_NAME="g15-control-center"
 readonly INSTALL_DIR="/opt/g15-controller"
 readonly BIN_LINK="/usr/local/bin/g15-controller"
 readonly SERVICE_FILE="/etc/systemd/system/g15-daemon.service"
@@ -157,7 +157,7 @@ install_application() {
     execute "cp -r src/ $INSTALL_DIR/"
     execute "cp requirements.txt $INSTALL_DIR/"
     execute "cp pyproject.toml $INSTALL_DIR/"
-    execute "cp system/g15-controller-commander.svg $INSTALL_DIR/icon.svg"
+    execute "cp system/g15-control-center.svg $INSTALL_DIR/icon.svg"
     
     log "Criando ambiente virtual Python..."
     execute "python3 -m venv $INSTALL_DIR/venv"
@@ -168,7 +168,7 @@ install_application() {
     
     execute "chown -R root:root $INSTALL_DIR"
     execute "chmod -R 755 $INSTALL_DIR"
-    execute "chmod +x $INSTALL_DIR/src/g15_controller_commander.py"
+    execute "chmod +x $INSTALL_DIR/src/g15_control_center.py"
     execute "chmod +x $INSTALL_DIR/src/g15_daemon.py"
     
     success "Aplicação instalada em $INSTALL_DIR"
@@ -187,7 +187,7 @@ install_systemd_service() {
 install_desktop_entry() {
     log "Instalando atalho desktop..."
     
-    execute "cp system/g15-controller-commander.desktop $DESKTOP_FILE"
+    execute "cp system/g15-control-center.desktop $DESKTOP_FILE"
     execute "chmod 644 $DESKTOP_FILE"
     execute "update-desktop-database /usr/share/applications/"
     
