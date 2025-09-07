@@ -114,7 +114,11 @@ class G15DaemonClient:
             else:
                 self._cached_data = {
                     "temps": {"cpu_temp": 45, "gpu_temp": 50},
-                    "fans": {"fan1_rpm": 2500, "fan2_rpm": 2300, "fan1_boost": 0, "fan2_boost": 0},
+                    "fans": {
+                        "fan1_rpm": 2500, "fan2_rpm": 2300, 
+                        "fan1_boost": 0, "fan2_boost": 0,
+                        "fan1_manual": False, "fan2_manual": False
+                    },
                     "power": {"current_mode": "Balanceado", "g_mode": False},
                     "status": {"model": "Unknown", "hwmon_available": False, "g_mode_active": False}
                 }
@@ -136,6 +140,10 @@ class G15DaemonClient:
     def get_fan_boost(self, fan_id: int) -> int:
         data = self._get_all_data()
         return data.get("fans", {}).get(f"fan{fan_id}_boost", 0)
+    
+    def get_fan_manual(self, fan_id: int) -> bool:
+        data = self._get_all_data()
+        return data.get("fans", {}).get(f"fan{fan_id}_manual", False)
 
     def get_power_mode(self) -> PowerMode:
         data = self._get_all_data()
@@ -238,6 +246,8 @@ class SensorMonitor(QThread):
             'fan2_rpm': self.daemon_client.get_fan_rpm(2),
             'fan1_boost': self.daemon_client.get_fan_boost(1),
             'fan2_boost': self.daemon_client.get_fan_boost(2),
+            'fan1_manual': self.daemon_client.get_fan_manual(1),
+            'fan2_manual': self.daemon_client.get_fan_manual(2),
             'power_mode': self.daemon_client.get_power_mode(),
             'g_mode': self.daemon_client.get_g_mode_status()
         }
@@ -568,30 +578,36 @@ class FanControlCard(QFrame):
 
         if not self.manual_enabled:
             self.boost_slider.setValue(0)
-            # Só emite o sinal se o manual foi desativado manualmente pelo usuário
-            # Não emite quando é desativado automaticamente por mudança de modo
-            if self.manual_toggle.isChecked() == False:
-                self.boost_changed.emit(self.fan_id, 0)
+            self.boost_changed.emit(self.fan_id, 0)
 
     def update_boost_label(self, value):
         self.boost_label.setText(f"{value}%")
-
+    
     def apply_boost(self):
         if self.manual_enabled:
             value = self.boost_slider.value()
             self.boost_changed.emit(self.fan_id, value)
 
+
     def set_preset(self, value):
         if self.manual_enabled:
             self.boost_slider.setValue(value)
-            self.apply_boost()
+            self.boost_changed.emit(self.fan_id, value)
 
     def update_rpm(self, rpm: int):
         self.rpm_label.setText(f"{rpm:,} RPM")
 
     def update_boost(self, boost: int):
-        if not self.manual_enabled:
-            self.boost_slider.setValue(boost)
+        self.boost_slider.setValue(boost)
+    
+    def sync_manual_state(self, is_manual: bool, boost: int):
+        self.manual_enabled = is_manual
+        self.manual_toggle.setChecked(is_manual)
+        self.manual_toggle.setText("Manual LIGADO" if is_manual else "Manual DESLIG.")
+        self.update_manual_button_style(is_manual)
+        self.boost_slider.setEnabled(is_manual)
+        self.boost_slider.setValue(boost)
+        self.boost_label.setText(f"{boost}%")
 
 
 class GModeButton(QPushButton):
@@ -857,10 +873,12 @@ class MainWindow(QMainWindow):
         self.custom_message_shown = False
         self.autostart_manager = AutoStartManager()
         self.mode_changing = False
+        self.initial_sync_done = False
 
         self.setup_ui()
         self.setup_monitoring()
         self.setup_tray()
+        self.sync_initial_state()
 
     def show_daemon_required_dialog(self):
         app = QApplication.instance()
@@ -1101,10 +1119,22 @@ class MainWindow(QMainWindow):
 
         self.fan1_control.update_rpm(data['fan1_rpm'])
         self.fan2_control.update_rpm(data['fan2_rpm'])
-        self.fan1_control.update_boost(data['fan1_boost'])
-        self.fan2_control.update_boost(data['fan2_boost'])
+        
+        if not self.initial_sync_done:
+            if data['power_mode'] == PowerMode.CUSTOM:
+                self.fan1_control.sync_manual_state(
+                    data.get('fan1_manual', False),
+                    data['fan1_boost']
+                )
+                self.fan2_control.sync_manual_state(
+                    data.get('fan2_manual', False),
+                    data['fan2_boost']
+                )
+            self.initial_sync_done = True
+        else:
+            self.fan1_control.update_boost(data['fan1_boost'])
+            self.fan2_control.update_boost(data['fan2_boost'])
 
-        # Só atualiza o seletor de modo se não estiver mudando de modo
         if not self.mode_changing:
             self.power_selector.set_mode(data['power_mode'])
         
@@ -1130,7 +1160,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Modo Personalizado",
                     "Modo personalizado ativado.\nHabilite controle Manual nos cartões das ventoinhas.")
         else:
-            # Desabilita controles manuais sem disparar eventos
             self.fan1_control.manual_enabled = False
             self.fan1_control.manual_toggle.setChecked(False)
             self.fan1_control.manual_toggle.setText("Manual DESLIG.")
@@ -1152,6 +1181,7 @@ class MainWindow(QMainWindow):
             return
 
         self.daemon_client.set_fan_boost(fan_id, boost)
+        self.daemon_client._cached_data = None
 
     def on_autostart_toggled(self, enabled: bool):
         try:
@@ -1206,6 +1236,32 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'monitor') and self.monitor:
                 self.monitor.stop()
             event.accept()
+    
+    def sync_initial_state(self):
+        try:
+            data = self.daemon_client._get_all_data()
+            power_mode = self.daemon_client.get_power_mode()
+            
+            if power_mode == PowerMode.CUSTOM:
+                fans_data = data.get('fans', {})
+                
+                if fans_data.get('fan1_manual', False):
+                    self.fan1_control.sync_manual_state(
+                        True,
+                        fans_data.get('fan1_boost', 0)
+                    )
+                
+                if fans_data.get('fan2_manual', False):
+                    self.fan2_control.sync_manual_state(
+                        True,
+                        fans_data.get('fan2_boost', 0)
+                    )
+                    
+            self.power_selector.set_mode(power_mode)
+            self.g_mode_button.set_state(data.get('power', {}).get('g_mode', False))
+            
+        except Exception as e:
+            print(f"Error syncing initial state: {e}")
 
 
 def main():

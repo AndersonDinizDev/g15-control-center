@@ -10,9 +10,12 @@ import threading
 import time
 import signal
 import logging
+import tempfile
+import shutil
 from pathlib import Path
 from enum import Enum
 from typing import Dict, Any, Optional
+from datetime import datetime
 import secrets
 
 
@@ -23,6 +26,150 @@ class PowerMode(Enum):
     CUSTOM = ("Personalizado", "0xa2", "#9C27B0")
 
 
+class ConfigManager:
+    """Gerencia persistência de configurações do daemon"""
+    
+    def __init__(self):
+        self.config_dir = Path('/etc/g15-daemon')
+        self.config_file = self.config_dir / 'config.json'
+        self.backup_file = self.config_dir / 'config.json.bak'
+        self.logger = logging.getLogger('g15.config')
+        
+        # Configurações padrão seguras
+        self.default_config = {
+            'power_mode': 'Balanceado',
+            'g_mode': False,
+            'fan_profiles': {
+                'cpu_fan_boost': 0,
+                'gpu_fan_boost': 0
+            },
+            'auto_apply': True,
+            'last_saved': None,
+            'version': '1.0'
+        }
+        
+        self._ensure_config_dir()
+    
+    def _ensure_config_dir(self):
+        """Cria diretório de configuração se não existir"""
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(self.config_dir, 0o700)  # Apenas root pode acessar
+            self.logger.info(f"Config directory ensured at {self.config_dir}")
+        except Exception as e:
+            self.logger.error(f"Failed to create config directory: {e}")
+    
+    def load(self) -> dict:
+        """Carrega configurações do arquivo"""
+        try:
+            if not self.config_file.exists():
+                self.logger.info("Config file not found, using defaults")
+                self.save(self.default_config)
+                return self.default_config.copy()
+            
+            with open(self.config_file, 'r') as f:
+                config = json.load(f)
+            
+            # Validação básica
+            if not self._validate_config(config):
+                self.logger.warning("Invalid config found, using defaults")
+                return self.default_config.copy()
+            
+            self.logger.info(f"Config loaded: {config}")
+            return config
+            
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Config file corrupted: {e}")
+            # Tenta restaurar do backup
+            if self.backup_file.exists():
+                self.logger.info("Attempting to restore from backup")
+                try:
+                    shutil.copy2(self.backup_file, self.config_file)
+                    return self.load()  # Recursivo para tentar carregar backup
+                except Exception as be:
+                    self.logger.error(f"Backup restore failed: {be}")
+            
+            return self.default_config.copy()
+        
+        except Exception as e:
+            self.logger.error(f"Failed to load config: {e}")
+            return self.default_config.copy()
+    
+    def save(self, config: dict) -> bool:
+        """Salva configurações atomicamente"""
+        try:
+            # Validação antes de salvar
+            if not self._validate_config(config):
+                self.logger.error("Invalid config, not saving")
+                return False
+            
+            # Adiciona timestamp
+            config['last_saved'] = datetime.now().isoformat()
+            
+            # Backup do arquivo atual se existir
+            if self.config_file.exists():
+                shutil.copy2(self.config_file, self.backup_file)
+            
+            # Escrita atômica usando arquivo temporário
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                dir=self.config_dir,
+                delete=False
+            ) as tmp_file:
+                json.dump(config, tmp_file, indent=2)
+                tmp_path = tmp_file.name
+            
+            # Move atomicamente para o arquivo final
+            os.chmod(tmp_path, 0o600)  # Apenas root pode ler/escrever
+            os.replace(tmp_path, self.config_file)
+            
+            self.logger.info(f"Config saved: {config}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save config: {e}")
+            # Limpa arquivo temporário se houver erro
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            return False
+    
+    def _validate_config(self, config: dict) -> bool:
+        """Valida estrutura e valores da configuração"""
+        try:
+            # Verifica campos obrigatórios
+            required_fields = ['power_mode', 'g_mode', 'fan_profiles']
+            for field in required_fields:
+                if field not in config:
+                    self.logger.error(f"Missing required field: {field}")
+                    return False
+            
+            # Valida power_mode
+            valid_modes = ['Silencioso', 'Balanceado', 'Performance', 'Personalizado']
+            if config['power_mode'] not in valid_modes:
+                self.logger.error(f"Invalid power_mode: {config['power_mode']}")
+                return False
+            
+            # Valida g_mode
+            if not isinstance(config['g_mode'], bool):
+                self.logger.error(f"Invalid g_mode type: {type(config['g_mode'])}")
+                return False
+            
+            # Valida fan_profiles
+            fan_profiles = config.get('fan_profiles', {})
+            for fan in ['cpu_fan_boost', 'gpu_fan_boost']:
+                if fan in fan_profiles:
+                    boost = fan_profiles[fan]
+                    if not isinstance(boost, int) or not (0 <= boost <= 100):
+                        self.logger.error(f"Invalid {fan} value: {boost}")
+                        return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Config validation error: {e}")
+            return False
+
+
 class G15HardwareController:
     def __init__(self):
         self.acpi_call_path = "/proc/acpi/call"
@@ -30,17 +177,22 @@ class G15HardwareController:
         self.current_mode = PowerMode.BALANCED
         self.g_mode_active = False
         self.manual_mode = False
+        self.current_fan_boosts = {1: 0, 2: 0}
+        self.manual_fan_control = {1: False, 2: False}
+        self.pre_gmode_state = None
 
         self.hwmon_path = None
         self.hwmon_fans = {}
         self.hwmon_temps = {}
 
         self.logger = logging.getLogger('g15.hardware')
+        self.config_manager = ConfigManager()
 
         self._validate_security()
         self._check_acpi_availability()
         self._detect_hwmon_sensors()
         self._detect_model()
+        self._load_and_apply_config()
 
     def _validate_security(self):
         if os.geteuid() != 0:
@@ -125,6 +277,71 @@ class G15HardwareController:
         except Exception as e:
             self.logger.warning(f"Model detection failed: {e}")
             self.model = "Unknown"
+    
+    def _load_and_apply_config(self):
+        """Carrega e aplica configurações salvas na inicialização"""
+        try:
+            config = self.config_manager.load()
+            
+            if not config.get('auto_apply', True):
+                self.logger.info("Auto-apply disabled, using default settings")
+                return
+            
+            self.logger.info("Applying saved configuration...")
+            
+            # Aplica modo de energia
+            mode_name = config.get('power_mode', 'Balanceado')
+            for mode in PowerMode:
+                if mode.value[0] == mode_name:
+                    self.set_power_mode(mode, save_config=False)
+                    break
+            
+            # Aplica G-Mode
+            g_mode = config.get('g_mode', False)
+            if g_mode:
+                self.enable_g_mode(save_config=False)
+            
+            # Aplica perfis de ventoinha se em modo Personalizado
+            if mode_name == 'Personalizado':
+                fan_profiles = config.get('fan_profiles', {})
+                cpu_boost = fan_profiles.get('cpu_fan_boost', 0)
+                gpu_boost = fan_profiles.get('gpu_fan_boost', 0)
+                cpu_manual = fan_profiles.get('cpu_manual', False)
+                gpu_manual = fan_profiles.get('gpu_manual', False)
+                
+                if cpu_manual:
+                    self.manual_fan_control[1] = True
+                    self.set_fan_boost(1, cpu_boost, save_config=False)
+                if gpu_manual:
+                    self.manual_fan_control[2] = True
+                    self.set_fan_boost(2, gpu_boost, save_config=False)
+            
+            self.logger.info("Configuration applied successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to apply saved config: {e}")
+            self.logger.info("Using default configuration")
+    
+    def _save_current_config(self):
+        """Salva configuração atual"""
+        try:
+            config = {
+                'power_mode': self.current_mode.value[0],
+                'g_mode': self.g_mode_active,
+                'fan_profiles': {
+                    'cpu_fan_boost': self.current_fan_boosts.get(1, 0),
+                    'gpu_fan_boost': self.current_fan_boosts.get(2, 0),
+                    'cpu_manual': self.manual_fan_control.get(1, False),
+                    'gpu_manual': self.manual_fan_control.get(2, False)
+                },
+                'auto_apply': True,
+                'version': '1.0'
+            }
+            
+            self.config_manager.save(config)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save current config: {e}")
 
     def _read_hwmon_sensor(self, sensor_path: str) -> int:
         try:
@@ -235,13 +452,8 @@ class G15HardwareController:
         if not isinstance(fan_id, int) or fan_id not in [1, 2]:
             self.logger.error(f"SECURITY: Invalid fan_id: {fan_id}")
             return 0
-
-        sensor_id = f"0x{0x32 + fan_id - 1:02X}"
-        result = self._acpi_call_real("0x14", ["0x0c", sensor_id])
-        try:
-            return max(0, min(100, int(result, 16)))
-        except:
-            return 0
+        
+        return self.current_fan_boosts.get(fan_id, 0)
 
     def get_power_mode(self) -> PowerMode:
         # Retorna o modo atual salvo em memória
@@ -252,7 +464,7 @@ class G15HardwareController:
         result = self._acpi_call_real("0x25", ["0x02"])
         return result == "0x1"
 
-    def set_power_mode(self, mode: PowerMode) -> bool:
+    def set_power_mode(self, mode: PowerMode, save_config: bool = True) -> bool:
         if not isinstance(mode, PowerMode):
             self.logger.error(f"SECURITY: Invalid power mode type: {type(mode)}")
             return False
@@ -265,10 +477,16 @@ class G15HardwareController:
         else:
             self.manual_mode = False
             self._acpi_call_real("0x15", ["0x01", mode.value[1]])
+            self.current_fan_boosts = {1: 0, 2: 0}
+            self.manual_fan_control = {1: False, 2: False}
+
+        # Salva configuração se solicitado
+        if save_config:
+            self._save_current_config()
 
         return True
 
-    def set_fan_boost(self, fan_id: int, percentage: int) -> bool:
+    def set_fan_boost(self, fan_id: int, percentage: int, save_config: bool = True, is_manual: bool = True) -> bool:
         if not isinstance(fan_id, int) or fan_id not in [1, 2]:
             self.logger.error(f"SECURITY: Invalid fan_id: {fan_id}")
             return False
@@ -282,21 +500,81 @@ class G15HardwareController:
         sensor_id = f"0x{0x32 + fan_id - 1:02X}"
         hex_value = f"0x{percentage:02X}"
         self._acpi_call_real("0x15", ["0x02", sensor_id, hex_value])
+        
+        self.current_fan_boosts[fan_id] = percentage
+        if is_manual:
+            self.manual_fan_control[fan_id] = (percentage > 0)
+        
+        if save_config:
+            self._save_current_config()
 
         return True
 
-    def enable_g_mode(self) -> bool:
+    def enable_g_mode(self, save_config: bool = True) -> bool:
         self.logger.info("CONTROL: Enabling G-Mode")
+        
+        if not self.g_mode_active:
+            self.pre_gmode_state = {
+                'mode': self.current_mode,
+                'fan_boosts': self.current_fan_boosts.copy(),
+                'manual_control': self.manual_fan_control.copy()
+            }
+            self.logger.info(f"Saving state before G-Mode: {self.pre_gmode_state}")
+        
         self.g_mode_active = True
-        self._acpi_call_real("0x15", ["0x01", "0xab"])
+        
         self._acpi_call_real("0x25", ["0x01", "0x01"])
+        time.sleep(0.05)
+        self._acpi_call_real("0x15", ["0x01", "0xab"])
+        
+        if save_config:
+            self._save_current_config()
+        
         return True
 
-    def disable_g_mode(self) -> bool:
+    def disable_g_mode(self, save_config: bool = True) -> bool:
         self.logger.info("CONTROL: Disabling G-Mode")
         self.g_mode_active = False
-        self._acpi_call_real("0x15", ["0x01", self.current_mode.value[1]])
+        
         self._acpi_call_real("0x25", ["0x01", "0x00"])
+        
+        time.sleep(0.1)
+        
+        if self.pre_gmode_state:
+            mode = self.pre_gmode_state['mode']
+            fan_boosts = self.pre_gmode_state['fan_boosts']
+            manual_control = self.pre_gmode_state['manual_control']
+            
+            self.logger.info(f"Restoring state: mode={mode.value[0]}, boosts={fan_boosts}, manual={manual_control}")
+            
+            self._acpi_call_real("0x15", ["0x01", mode.value[1]])
+            self.current_mode = mode
+            
+            time.sleep(0.1)
+            
+            if mode == PowerMode.CUSTOM:
+                self.manual_mode = True
+                self.current_fan_boosts = fan_boosts.copy()
+                self.manual_fan_control = manual_control.copy()
+                
+                for fan_id in [1, 2]:
+                    if manual_control.get(fan_id, False) and fan_boosts.get(fan_id, 0) > 0:
+                        sensor_id = f"0x{0x32 + fan_id - 1:02X}"
+                        hex_value = f"0x{fan_boosts.get(fan_id, 0):02X}"
+                        self.logger.info(f"Restoring fan {fan_id} to {fan_boosts.get(fan_id, 0)}%")
+                        self._acpi_call_real("0x15", ["0x02", sensor_id, hex_value])
+            else:
+                self.manual_mode = False
+                self.current_fan_boosts = {1: 0, 2: 0}
+                self.manual_fan_control = {1: False, 2: False}
+            
+            self.pre_gmode_state = None
+        else:
+            self._acpi_call_real("0x15", ["0x01", self.current_mode.value[1]])
+        
+        if save_config:
+            self._save_current_config()
+        
         return True
 
     def toggle_g_mode(self) -> bool:
@@ -403,7 +681,9 @@ class G15DaemonServer:
                         "fan1_rpm": self.hardware.get_fan_rpm(1),
                         "fan2_rpm": self.hardware.get_fan_rpm(2),
                         "fan1_boost": self.hardware.get_fan_boost(1),
-                        "fan2_boost": self.hardware.get_fan_boost(2)
+                        "fan2_boost": self.hardware.get_fan_boost(2),
+                        "fan1_manual": self.hardware.manual_fan_control.get(1, False),
+                        "fan2_manual": self.hardware.manual_fan_control.get(2, False)
                     }
                 }
 
@@ -449,7 +729,9 @@ class G15DaemonServer:
                             "fan1_rpm": self.hardware.get_fan_rpm(1),
                             "fan2_rpm": self.hardware.get_fan_rpm(2),
                             "fan1_boost": self.hardware.get_fan_boost(1),
-                            "fan2_boost": self.hardware.get_fan_boost(2)
+                            "fan2_boost": self.hardware.get_fan_boost(2),
+                            "fan1_manual": self.hardware.manual_fan_control.get(1, False),
+                            "fan2_manual": self.hardware.manual_fan_control.get(2, False)
                         },
                         "power": {
                             "current_mode": self.hardware.get_power_mode().value[0],
@@ -566,6 +848,7 @@ def main():
     print("Starting Dell G15 Controller Daemon...")
     print("⚠️  WARNING: This daemon runs with root privileges")
     print("⚠️  All operations are logged for security audit")
+    print("📁 Configuration will be saved to /etc/g15-daemon/config.json")
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
