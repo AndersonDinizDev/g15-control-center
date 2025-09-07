@@ -38,8 +38,8 @@ Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 e
 ### Instalação Automática (Recomendada)
 ```bash
 # Clone o repositório
-git clone https://github.com/AndersonDinizDev/g15-controller-commander.git
-cd g15-controller-commander
+git clone https://github.com/AndersonDinizDev/g15-control-center.git
+cd g15-control-center
 
 # Execute o instalador automático
 sudo ./install.sh
@@ -158,7 +158,7 @@ sudo tail -f /var/log/g15-daemon.log
 Para remover completamente o Dell G15 Control Center:
 
 ```bash
-cd g15-controller-commander
+cd g15-control-center
 sudo ./uninstall.sh
 ```
 
@@ -172,7 +172,7 @@ sudo ./uninstall.sh
 
 ## Estrutura do Projeto
 ```
-g15-controller-commander/
+g15-control-center/
 ├── src/                        # Código fonte
 │   ├── g15_control_center.py  # Interface cliente (PyQt6)
 │   ├── g15_daemon.py               # Daemon de controle (root)
