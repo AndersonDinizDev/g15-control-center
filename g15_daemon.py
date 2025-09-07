@@ -12,6 +12,8 @@ import signal
 import logging
 import tempfile
 import shutil
+import select
+import struct
 from pathlib import Path
 from enum import Enum
 from typing import Dict, Any, Optional
@@ -24,6 +26,94 @@ class PowerMode(Enum):
     BALANCED = ("Balanceado", "0xa0", "#2196F3")
     PERFORMANCE = ("Performance", "0xa1", "#FF9800")
     CUSTOM = ("Personalizado", "0xa2", "#9C27B0")
+
+
+class GModeKeyListener:
+    """Escuta eventos da tecla G-Mode de forma segura"""
+    
+    def __init__(self, callback=None):
+        self.callback = callback
+        self.running = False
+        self.thread = None
+        self.device_path = None
+        self.logger = logging.getLogger('g15.keylistener')
+        self.key_code = 148  # KEY_PROG1
+        
+    def find_keyboard_device(self):
+        """Encontra o dispositivo de teclado AT Translated Set 2"""
+        try:
+            devices_info = subprocess.run(
+                ['cat', '/proc/bus/input/devices'], 
+                capture_output=True, text=True, check=True
+            ).stdout
+            
+            lines = devices_info.split('\n')
+            current_device = {}
+            
+            for line in lines:
+                if line.startswith('I:'):
+                    current_device = {}
+                elif line.startswith('N: Name='):
+                    current_device['name'] = line.split('=', 1)[1].strip('"')
+                elif line.startswith('H: Handlers='):
+                    handlers = line.split('=', 1)[1]
+                    event_handlers = [h for h in handlers.split() if h.startswith('event')]
+                    if event_handlers:
+                        current_device['event'] = f"/dev/input/{event_handlers[0]}"
+                        
+                        if 'AT Translated Set 2 keyboard' in current_device.get('name', ''):
+                            return current_device['event']
+                            
+        except Exception as e:
+            self.logger.error(f"Error finding keyboard device: {e}")
+            
+        return None
+    
+    def read_key_events(self):
+        """Lê eventos de teclado de forma segura"""
+        if not self.device_path:
+            return
+            
+        try:
+            with open(self.device_path, 'rb') as device:
+                while self.running:
+                    ready, _, _ = select.select([device], [], [], 1.0)
+                    
+                    if not ready:
+                        continue
+                        
+                    event_data = device.read(24)
+                    if len(event_data) == 24:
+                        tv_sec, tv_usec, type_, code, value = struct.unpack('llHHi', event_data)
+                        
+                        if type_ == 1 and code == self.key_code and value == 1:
+                            if self.callback:
+                                threading.Thread(target=self.callback, daemon=True).start()
+                                
+        except PermissionError:
+            self.logger.error("Permission denied to read keyboard events - daemon needs root")
+        except Exception as e:
+            self.logger.error(f"Error reading key events: {e}")
+    
+    def start(self):
+        """Inicia a captura de eventos"""
+        if self.running:
+            return
+            
+        self.device_path = self.find_keyboard_device()
+        if not self.device_path:
+            self.logger.warning("Keyboard device not found - G-Mode key capture disabled")
+            return
+            
+        self.running = True
+        self.thread = threading.Thread(target=self.read_key_events, daemon=True)
+        self.thread.start()
+    
+    def stop(self):
+        """Para a captura de eventos"""
+        self.running = False
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=2)
 
 
 class ConfigManager:
@@ -580,6 +670,16 @@ class G15DaemonServer:
         self.client_requests = {}
 
         self.logger = logging.getLogger('g15.daemon')
+        
+        # Inicializa listener da tecla G-Mode
+        self.gmode_listener = GModeKeyListener(callback=self._on_gmode_key_pressed)
+    
+    def _on_gmode_key_pressed(self):
+        """Callback executado quando a tecla G-Mode é pressionada"""
+        try:
+            self.hardware.toggle_g_mode()
+        except Exception as e:
+            self.logger.error(f"Error handling G-Mode key press: {e}")
 
     def setup_logging(self):
         logging.basicConfig(
@@ -785,6 +885,9 @@ class G15DaemonServer:
             self.server_socket.listen(5)
             self.running = True
 
+            # Inicia o listener da tecla G-Mode
+            self.gmode_listener.start()
+
             self.logger.info(f"G15 Daemon started on {self.socket_path}")
 
             while self.running:
@@ -809,6 +912,10 @@ class G15DaemonServer:
     def stop_server(self):
         self.logger.info("Stopping G15 Daemon...")
         self.running = False
+
+        # Para o listener da tecla G-Mode
+        if hasattr(self, 'gmode_listener'):
+            self.gmode_listener.stop()
 
         if self.server_socket:
             self.server_socket.close()
