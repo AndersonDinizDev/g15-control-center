@@ -29,7 +29,6 @@ class PowerMode(Enum):
 
 
 class GModeKeyListener:
-    """Escuta eventos da tecla G-Mode de forma segura"""
     
     def __init__(self, callback=None):
         self.callback = callback
@@ -40,7 +39,6 @@ class GModeKeyListener:
         self.key_code = 148  # KEY_PROG1
         
     def find_keyboard_device(self):
-        """Encontra o dispositivo de teclado AT Translated Set 2"""
         try:
             devices_info = subprocess.run(
                 ['cat', '/proc/bus/input/devices'], 
@@ -70,7 +68,6 @@ class GModeKeyListener:
         return None
     
     def read_key_events(self):
-        """Lê eventos de teclado de forma segura"""
         if not self.device_path:
             return
             
@@ -96,7 +93,6 @@ class GModeKeyListener:
             self.logger.error(f"Error reading key events: {e}")
     
     def start(self):
-        """Inicia a captura de eventos"""
         if self.running:
             return
             
@@ -110,14 +106,12 @@ class GModeKeyListener:
         self.thread.start()
     
     def stop(self):
-        """Para a captura de eventos"""
         self.running = False
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2)
 
 
 class ConfigManager:
-    """Gerencia persistência de configurações do daemon"""
     
     def __init__(self):
         self.config_dir = Path('/etc/g15-daemon')
@@ -125,7 +119,6 @@ class ConfigManager:
         self.backup_file = self.config_dir / 'config.json.bak'
         self.logger = logging.getLogger('g15.config')
         
-        # Configurações padrão seguras
         self.default_config = {
             'power_mode': 'Balanceado',
             'g_mode': False,
@@ -141,16 +134,14 @@ class ConfigManager:
         self._ensure_config_dir()
     
     def _ensure_config_dir(self):
-        """Cria diretório de configuração se não existir"""
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
-            os.chmod(self.config_dir, 0o700)  # Apenas root pode acessar
+            os.chmod(self.config_dir, 0o700)
             self.logger.info(f"Config directory ensured at {self.config_dir}")
         except Exception as e:
             self.logger.error(f"Failed to create config directory: {e}")
     
     def load(self) -> dict:
-        """Carrega configurações do arquivo"""
         try:
             if not self.config_file.exists():
                 self.logger.info("Config file not found, using defaults")
@@ -160,7 +151,6 @@ class ConfigManager:
             with open(self.config_file, 'r') as f:
                 config = json.load(f)
             
-            # Validação básica
             if not self._validate_config(config):
                 self.logger.warning("Invalid config found, using defaults")
                 return self.default_config.copy()
@@ -170,12 +160,11 @@ class ConfigManager:
             
         except json.JSONDecodeError as e:
             self.logger.error(f"Config file corrupted: {e}")
-            # Tenta restaurar do backup
             if self.backup_file.exists():
                 self.logger.info("Attempting to restore from backup")
                 try:
                     shutil.copy2(self.backup_file, self.config_file)
-                    return self.load()  # Recursivo para tentar carregar backup
+                    return self.load()
                 except Exception as be:
                     self.logger.error(f"Backup restore failed: {be}")
             
@@ -186,21 +175,16 @@ class ConfigManager:
             return self.default_config.copy()
     
     def save(self, config: dict) -> bool:
-        """Salva configurações atomicamente"""
         try:
-            # Validação antes de salvar
             if not self._validate_config(config):
                 self.logger.error("Invalid config, not saving")
                 return False
             
-            # Adiciona timestamp
             config['last_saved'] = datetime.now().isoformat()
             
-            # Backup do arquivo atual se existir
             if self.config_file.exists():
                 shutil.copy2(self.config_file, self.backup_file)
             
-            # Escrita atômica usando arquivo temporário
             with tempfile.NamedTemporaryFile(
                 mode='w',
                 dir=self.config_dir,
@@ -209,8 +193,7 @@ class ConfigManager:
                 json.dump(config, tmp_file, indent=2)
                 tmp_path = tmp_file.name
             
-            # Move atomicamente para o arquivo final
-            os.chmod(tmp_path, 0o600)  # Apenas root pode ler/escrever
+            os.chmod(tmp_path, 0o600)
             os.replace(tmp_path, self.config_file)
             
             self.logger.info(f"Config saved: {config}")
@@ -218,33 +201,27 @@ class ConfigManager:
             
         except Exception as e:
             self.logger.error(f"Failed to save config: {e}")
-            # Limpa arquivo temporário se houver erro
             if 'tmp_path' in locals() and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
             return False
     
     def _validate_config(self, config: dict) -> bool:
-        """Valida estrutura e valores da configuração"""
         try:
-            # Verifica campos obrigatórios
             required_fields = ['power_mode', 'g_mode', 'fan_profiles']
             for field in required_fields:
                 if field not in config:
                     self.logger.error(f"Missing required field: {field}")
                     return False
             
-            # Valida power_mode
             valid_modes = ['Silencioso', 'Balanceado', 'Performance', 'Personalizado']
             if config['power_mode'] not in valid_modes:
                 self.logger.error(f"Invalid power_mode: {config['power_mode']}")
                 return False
             
-            # Valida g_mode
             if not isinstance(config['g_mode'], bool):
                 self.logger.error(f"Invalid g_mode type: {type(config['g_mode'])}")
                 return False
             
-            # Valida fan_profiles
             fan_profiles = config.get('fan_profiles', {})
             for fan in ['cpu_fan_boost', 'gpu_fan_boost']:
                 if fan in fan_profiles:
@@ -369,7 +346,6 @@ class G15HardwareController:
             self.model = "Unknown"
     
     def _load_and_apply_config(self):
-        """Carrega e aplica configurações salvas na inicialização"""
         try:
             config = self.config_manager.load()
             
@@ -379,14 +355,12 @@ class G15HardwareController:
             
             self.logger.info("Applying saved configuration...")
             
-            # Aplica modo de energia
             mode_name = config.get('power_mode', 'Balanceado')
             for mode in PowerMode:
                 if mode.value[0] == mode_name:
                     self.set_power_mode(mode, save_config=False)
                     break
             
-            # Aplica G-Mode
             g_mode = config.get('g_mode', False)
             if g_mode:
                 self.enable_g_mode(save_config=False)
@@ -408,7 +382,6 @@ class G15HardwareController:
             self.logger.info("Using default configuration")
     
     def _save_current_config(self):
-        """Salva configuração atual"""
         try:
             config = {
                 'power_mode': self.current_mode.value[0],
@@ -541,8 +514,6 @@ class G15HardwareController:
         return self.current_fan_boosts.get(fan_id, 0)
 
     def get_power_mode(self) -> PowerMode:
-        # Retorna o modo atual salvo em memória
-        # O hardware Dell nem sempre reporta corretamente o modo após mudança
         return self.current_mode
 
     def get_g_mode_status(self) -> bool:
@@ -565,7 +536,6 @@ class G15HardwareController:
             self.current_fan_boosts = {1: 0, 2: 0}
             self.manual_fan_control = {1: False, 2: False}
 
-        # Salva configuração se solicitado
         if save_config:
             self._save_current_config()
 
@@ -671,11 +641,9 @@ class G15DaemonServer:
 
         self.logger = logging.getLogger('g15.daemon')
         
-        # Inicializa listener da tecla G-Mode
         self.gmode_listener = GModeKeyListener(callback=self._on_gmode_key_pressed)
     
     def _on_gmode_key_pressed(self):
-        """Callback executado quando a tecla G-Mode é pressionada"""
         try:
             self.hardware.toggle_g_mode()
         except Exception as e:
@@ -885,7 +853,6 @@ class G15DaemonServer:
             self.server_socket.listen(5)
             self.running = True
 
-            # Inicia o listener da tecla G-Mode
             self.gmode_listener.start()
 
             self.logger.info(f"G15 Daemon started on {self.socket_path}")
@@ -913,7 +880,6 @@ class G15DaemonServer:
         self.logger.info("Stopping G15 Daemon...")
         self.running = False
 
-        # Para o listener da tecla G-Mode
         if hasattr(self, 'gmode_listener'):
             self.gmode_listener.stop()
 
@@ -935,9 +901,9 @@ def signal_handler(signum, frame):
 
 def main():
     print("Starting Dell G15 Controller Daemon...")
-    print("⚠️  WARNING: This daemon runs with root privileges")
-    print("⚠️  All operations are logged for security audit")
-    print("📁 Configuration will be saved to /etc/g15-daemon/config.json")
+    print("WARNING: This daemon runs with root privileges")
+    print("All operations are logged for security audit")
+    print("Configuration will be saved to /etc/g15-daemon/config.json")
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

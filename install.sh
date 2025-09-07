@@ -2,9 +2,6 @@
 
 set -euo pipefail
 
-# ===================================================================
-# Dell G15 Controller Commander - Instalador Automatizado
-# ===================================================================
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly APP_NAME="g15-controller-commander"
@@ -14,17 +11,14 @@ readonly SERVICE_FILE="/etc/systemd/system/g15-daemon.service"
 readonly DESKTOP_FILE="/usr/share/applications/${APP_NAME}.desktop"
 readonly HWDB_FILE="/etc/udev/hwdb.d/90-dell-g15-gmode.hwdb"
 
-
-# Cores para output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly PURPLE='\033[0;35m'
 readonly CYAN='\033[0;36m'
-readonly NC='\033[0m' # No Color
+readonly NC='\033[0m'
 
-# Funções de logging
 log() {
     echo -e "${CYAN}[INFO]${NC} $*"
 }
@@ -46,7 +40,6 @@ fatal() {
     exit 1
 }
 
-# Função para executar comandos com log
 execute() {
     local cmd="$*"
     log "Executando: $cmd"
@@ -55,14 +48,12 @@ execute() {
     fi
 }
 
-# Verificação de root
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         fatal "Este script deve ser executado como root. Use: sudo $0"
     fi
 }
 
-# Detectar distribuição
 detect_distro() {
     if [[ -f /etc/os-release ]]; then
         source /etc/os-release
@@ -81,11 +72,9 @@ detect_distro() {
     fi
 }
 
-# Verificar hardware Dell G15
 check_hardware() {
     log "Verificando compatibilidade de hardware..."
     
-    # Verificar DMI
     local vendor model
     vendor=$(dmidecode -s system-manufacturer 2>/dev/null || echo "")
     model=$(dmidecode -s system-product-name 2>/dev/null || echo "")
@@ -110,7 +99,6 @@ check_hardware() {
         fi
     fi
     
-    # Verificar módulo acpi_call
     if ! lsmod | grep -q acpi_call; then
         log "Tentando carregar módulo acpi_call..."
         if ! modprobe acpi_call 2>/dev/null; then
@@ -119,7 +107,6 @@ check_hardware() {
     fi
 }
 
-# Instalar dependências do sistema
 install_system_deps() {
     log "Instalando dependências do sistema..."
     
@@ -142,14 +129,12 @@ install_system_deps() {
         execute "apt install -y $dep"
     done
     
-    # Carregar módulo acpi_call
     log "Carregando módulo acpi_call..."
     execute "modprobe acpi_call"
     
     success "Dependências do sistema instaladas"
 }
 
-# Criar usuário do sistema se necessário
 setup_system_user() {
     if ! id g15-controller &>/dev/null; then
         log "Criando usuário do sistema g15-controller..."
@@ -157,37 +142,30 @@ setup_system_user() {
     fi
 }
 
-# Instalar aplicação
 install_application() {
     log "Instalando aplicação em $INSTALL_DIR..."
     
-    # Parar serviço se estiver rodando
     if systemctl is-active --quiet g15-daemon 2>/dev/null; then
         log "Parando serviço existente..."
         execute "systemctl stop g15-daemon"
     fi
     
-    # Criar diretório de instalação
     execute "mkdir -p $INSTALL_DIR"
     execute "cd $SCRIPT_DIR"
     
-    # Copiar arquivos da aplicação
     log "Copiando arquivos da aplicação..."
     execute "cp -r src/ $INSTALL_DIR/"
     execute "cp requirements.txt $INSTALL_DIR/"
     execute "cp pyproject.toml $INSTALL_DIR/"
     execute "cp system/g15-controller-commander.svg $INSTALL_DIR/icon.svg"
     
-    # Criar ambiente virtual
     log "Criando ambiente virtual Python..."
     execute "python3 -m venv $INSTALL_DIR/venv"
     
-    # Instalar dependências Python
     log "Instalando dependências Python..."
     execute "$INSTALL_DIR/venv/bin/pip install --upgrade pip"
     execute "$INSTALL_DIR/venv/bin/pip install -r $INSTALL_DIR/requirements.txt"
     
-    # Definir permissões
     execute "chown -R root:root $INSTALL_DIR"
     execute "chmod -R 755 $INSTALL_DIR"
     execute "chmod +x $INSTALL_DIR/src/g15_controller_commander.py"
@@ -196,7 +174,6 @@ install_application() {
     success "Aplicação instalada em $INSTALL_DIR"
 }
 
-# Instalar serviço systemd
 install_systemd_service() {
     log "Instalando serviço systemd..."
     
@@ -207,7 +184,6 @@ install_systemd_service() {
     success "Serviço systemd instalado e habilitado"
 }
 
-# Instalar atalho desktop
 install_desktop_entry() {
     log "Instalando atalho desktop..."
     
@@ -218,7 +194,6 @@ install_desktop_entry() {
     success "Atalho desktop instalado"
 }
 
-# Instalar mapeamento de tecla G-Mode
 install_gmode_key() {
     log "Instalando mapeamento da tecla G-Mode..."
     
@@ -229,7 +204,6 @@ install_gmode_key() {
     success "Mapeamento da tecla G-Mode instalado"
 }
 
-# Criar link simbólico
 create_symlink() {
     log "Criando link simbólico..."
     
@@ -243,7 +217,6 @@ create_symlink() {
     success "Link simbólico criado: $BIN_LINK"
 }
 
-# Iniciar serviços
 start_services() {
     log "Iniciando serviços..."
     
@@ -256,11 +229,9 @@ start_services() {
     fi
 }
 
-# Verificação pós-instalação
 post_install_check() {
     log "Executando verificações pós-instalação..."
     
-    # Verificar arquivos
     local files=("$INSTALL_DIR/src/g15_daemon.py" "$SERVICE_FILE" "$DESKTOP_FILE" "$HWDB_FILE")
     for file in "${files[@]}"; do
         if [[ ! -f "$file" ]]; then
@@ -268,12 +239,10 @@ post_install_check() {
         fi
     done
     
-    # Verificar serviço
     if ! systemctl is-enabled --quiet g15-daemon; then
         fatal "Serviço g15-daemon não está habilitado"
     fi
     
-    # Verificar conectividade daemon
     sleep 2
     if [[ -S "/tmp/g15-daemon.sock" ]]; then
         success "Socket do daemon detectado"
@@ -284,28 +253,27 @@ post_install_check() {
     success "Verificações pós-instalação concluídas"
 }
 
-# Mostrar informações finais
 show_completion_info() {
     echo
     echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║            INSTALAÇÃO CONCLUÍDA!                ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
     echo
-    echo -e "${CYAN}🚀 Como usar:${NC}"
+    echo -e "${CYAN}Como usar:${NC}"
     echo -e "  • Abrir interface: ${YELLOW}g15-controller${NC} (ou pelo menu de aplicações)"
     echo -e "  • Status daemon: ${YELLOW}systemctl status g15-daemon${NC}"
     echo -e "  • Ver logs: ${YELLOW}journalctl -u g15-daemon -f${NC}"
     echo -e "  • Pressionar tecla: ${YELLOW}F9${NC} (ativa/desativa G-Mode)"
     echo
-    echo -e "${CYAN}📁 Arquivos instalados:${NC}"
+    echo -e "${CYAN}Arquivos instalados:${NC}"
     echo -e "  • Aplicação: ${YELLOW}$INSTALL_DIR${NC}"
     echo -e "  • Serviço: ${YELLOW}$SERVICE_FILE${NC}"
     echo -e "  • Atalho: ${YELLOW}$DESKTOP_FILE${NC}"
     echo
-    echo -e "${CYAN}🛠️  Para desinstalar:${NC}"
+    echo -e "${CYAN}Para desinstalar:${NC}"
     echo -e "  • Execute: ${YELLOW}sudo ./uninstall.sh${NC}"
     echo
-    echo -e "${PURPLE}⚠️  IMPORTANTE:${NC}"
+    echo -e "${PURPLE}IMPORTANTE:${NC}"
     echo -e "  • Reinicie o sistema para ativação completa da tecla G-Mode"
     echo -e "  • O daemon inicia automaticamente no boot"
     echo
@@ -313,7 +281,6 @@ show_completion_info() {
     echo
 }
 
-# Função principal
 main() {
     echo -e "${BLUE}"
     echo "╔══════════════════════════════════════════════════════╗"
@@ -341,7 +308,6 @@ main() {
     success "Instalação concluída com sucesso!"
 }
 
-# Executar apenas se chamado diretamente
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi

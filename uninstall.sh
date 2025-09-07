@@ -2,9 +2,6 @@
 
 set -euo pipefail
 
-# ===================================================================
-# Dell G15 Controller Commander - Desinstalador Completo
-# ===================================================================
 
 readonly APP_NAME="g15-controller-commander"
 readonly INSTALL_DIR="/opt/g15-controller"
@@ -14,16 +11,13 @@ readonly DESKTOP_FILE="/usr/share/applications/${APP_NAME}.desktop"
 readonly HWDB_FILE="/etc/udev/hwdb.d/90-dell-g15-gmode.hwdb"
 readonly CONFIG_DIR="/etc/g15-daemon"
 
-
-# Cores para output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly CYAN='\033[0;36m'
-readonly NC='\033[0m' # No Color
+readonly NC='\033[0m'
 
-# Funções de logging
 log() {
     echo -e "${CYAN}[INFO]${NC} $*"
 }
@@ -45,7 +39,6 @@ fatal() {
     exit 1
 }
 
-# Função para executar comandos com log (permite falha)
 execute() {
     local cmd="$*"
     log "Executando: $cmd"
@@ -56,7 +49,6 @@ execute() {
     return 0
 }
 
-# Função para executar comandos que devem ter sucesso
 execute_required() {
     local cmd="$*"
     log "Executando: $cmd"
@@ -65,16 +57,14 @@ execute_required() {
     fi
 }
 
-# Verificação de root
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         fatal "Este script deve ser executado como root. Use: sudo $0"
     fi
 }
 
-# Confirmação do usuário
 confirm_uninstall() {
-    echo -e "${YELLOW}⚠️  Esta operação irá remover completamente o Dell G15 Controller Commander.${NC}"
+    echo -e "${YELLOW}Esta operação irá remover completamente o Dell G15 Controller Commander.${NC}"
     echo
     echo "Itens que serão removidos:"
     echo -e "  • Aplicação: ${RED}$INSTALL_DIR${NC}"
@@ -91,17 +81,14 @@ confirm_uninstall() {
     fi
 }
 
-# Parar e desabilitar serviços
 stop_services() {
     log "Parando e desabilitando serviços..."
     
-    # Parar serviço se estiver rodando
     if systemctl is-active --quiet g15-daemon 2>/dev/null; then
         log "Parando serviço g15-daemon..."
         execute "systemctl stop g15-daemon"
     fi
     
-    # Desabilitar serviço se estiver habilitado
     if systemctl is-enabled --quiet g15-daemon 2>/dev/null; then
         log "Desabilitando serviço g15-daemon..."
         execute "systemctl disable g15-daemon"
@@ -110,7 +97,6 @@ stop_services() {
     success "Serviços parados e desabilitados"
 }
 
-# Remover arquivos do serviço
 remove_systemd_service() {
     log "Removendo arquivos do serviço systemd..."
     
@@ -124,20 +110,16 @@ remove_systemd_service() {
     fi
 }
 
-# Remover aplicação
 remove_application() {
     log "Removendo aplicação..."
     
     if [[ -d "$INSTALL_DIR" ]]; then
-        # Matar qualquer processo em execução
         log "Terminando processos da aplicação..."
         execute "pkill -f g15_daemon.py || true"
         execute "pkill -f g15_controller_commander.py || true"
         
-        # Aguardar um momento
         sleep 2
         
-        # Remover diretório
         execute_required "rm -rf '$INSTALL_DIR'"
         success "Aplicação removida de $INSTALL_DIR"
     else
@@ -145,7 +127,6 @@ remove_application() {
     fi
 }
 
-# Remover link simbólico
 remove_symlink() {
     log "Removendo link simbólico..."
     
@@ -157,7 +138,6 @@ remove_symlink() {
     fi
 }
 
-# Remover atalho desktop
 remove_desktop_entry() {
     log "Removendo atalho desktop..."
     
@@ -170,7 +150,6 @@ remove_desktop_entry() {
     fi
 }
 
-# Remover configurações
 remove_configs() {
     log "Removendo configurações..."
     
@@ -181,14 +160,12 @@ remove_configs() {
         log "Diretório de configurações não encontrado: $CONFIG_DIR"
     fi
     
-    # Remover socket se existir
     if [[ -S "/tmp/g15-daemon.sock" ]]; then
         execute "rm /tmp/g15-daemon.sock"
         log "Socket removido"
     fi
 }
 
-# Remover mapeamento tecla G-Mode
 remove_gmode_key() {
     log "Removendo mapeamento da tecla G-Mode..."
     
@@ -202,7 +179,6 @@ remove_gmode_key() {
     fi
 }
 
-# Remover usuário do sistema
 remove_system_user() {
     log "Removendo usuário do sistema..."
     
@@ -214,14 +190,11 @@ remove_system_user() {
     fi
 }
 
-# Limpeza de logs
 cleanup_logs() {
     log "Limpando logs..."
     
-    # Remover logs do journal
     execute "journalctl --vacuum-time=1s --identifier=g15-daemon || true"
     
-    # Remover arquivo de log específico se existir
     if [[ -f "/var/log/g15-daemon.log" ]]; then
         execute "rm /var/log/g15-daemon.log"
         log "Log removido: /var/log/g15-daemon.log"
@@ -230,23 +203,21 @@ cleanup_logs() {
     success "Logs limpos"
 }
 
-# Oferecer remoção de dependências
 offer_remove_deps() {
     echo
-    echo -e "${CYAN}🧹 Limpeza de dependências${NC}"
+    echo -e "${CYAN}Limpeza de dependências${NC}"
     echo "As seguintes dependências foram instaladas para o G15 Controller:"
     echo -e "  • ${YELLOW}acpi-call-dkms${NC} (módulo ACPI)"
     echo -e "  • ${YELLOW}policykit-1${NC} (autenticação)"
     echo -e "  • ${YELLOW}libxcb-cursor0${NC} (interface Qt)"
     echo
-    echo -e "${YELLOW}⚠️  Estas dependências podem ser usadas por outros programas.${NC}"
+    echo -e "${YELLOW}Estas dependências podem ser usadas por outros programas.${NC}"
     read -p "Deseja removê-las também? [y/N] " -n 1 -r
     echo
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         log "Removendo dependências opcionais..."
         
-        # Lista de dependências que podem ser removidas
         local optional_deps=(
             "acpi-call-dkms"
         )
@@ -265,7 +236,6 @@ offer_remove_deps() {
     fi
 }
 
-# Verificação pós-desinstalação
 post_uninstall_check() {
     log "Executando verificações pós-desinstalação..."
     
@@ -294,7 +264,6 @@ post_uninstall_check() {
         success "Nenhum arquivo residual encontrado"
     fi
     
-    # Verificar se algum processo ainda está rodando
     if pgrep -f "g15_daemon\|g15_controller" >/dev/null; then
         warning "Processos relacionados ainda estão em execução"
         execute "pkill -f 'g15_daemon\|g15_controller' || true"
@@ -303,21 +272,20 @@ post_uninstall_check() {
     success "Verificações pós-desinstalação concluídas"
 }
 
-# Mostrar informações finais
 show_completion_info() {
     echo
     echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║            DESINSTALAÇÃO CONCLUÍDA!             ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
     echo
-    echo -e "${CYAN}✅ Itens removidos:${NC}"
+    echo -e "${CYAN}Itens removidos:${NC}"
     echo -e "  • Aplicação e arquivos"
     echo -e "  • Serviço systemd"
     echo -e "  • Atalho desktop"
     echo -e "  • Configurações"
     echo -e "  • Mapeamento tecla G-Mode"
     echo
-    echo -e "${CYAN}🔄 Reinicialização recomendada:${NC}"
+    echo -e "${CYAN}Reinicialização recomendada:${NC}"
     echo -e "  • Para remover completamente o mapeamento da tecla G-Mode"
     echo -e "  • Para limpar qualquer cache do sistema"
     echo
@@ -327,7 +295,6 @@ show_completion_info() {
     echo
 }
 
-# Função principal
 main() {
     echo -e "${RED}"
     echo "╔══════════════════════════════════════════════════════╗"
@@ -356,7 +323,6 @@ main() {
     success "Desinstalação concluída com sucesso!"
 }
 
-# Executar apenas se chamado diretamente
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi

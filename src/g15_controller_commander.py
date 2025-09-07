@@ -45,9 +45,8 @@ class G15DaemonClient:
 
         if self.daemon_available:
             self._authenticate()
-            print("=== G15 Client Mode: Connected to Daemon ===")
         else:
-            print("=== G15 Client Mode: Daemon not available ===")
+            print("G15 Daemon not available")
 
     def _check_daemon(self) -> bool:
         try:
@@ -96,7 +95,7 @@ class G15DaemonClient:
             return json.loads(response_data.decode('utf-8'))
 
         except Exception as e:
-            print(f"Error communicating with daemon: {e}")
+            pass
             self.daemon_available = False
             return {"status": "error", "message": str(e)}
 
@@ -208,26 +207,22 @@ X-GNOME-Autostart-Delay=5
             self.desktop_file.write_text(desktop_content)
             os.chmod(self.desktop_file, 0o755)
 
-            print(f"Autostart enabled: {self.desktop_file}")
+            pass
             return True
 
         except Exception as e:
-            print(f"Failed to enable autostart: {e}")
+            pass
             return False
 
     def disable(self) -> bool:
         try:
             if self.desktop_file.exists():
                 self.desktop_file.unlink()
-                print(f"Autostart disabled: {self.desktop_file}")
+                pass
             return True
         except Exception as e:
-            print(f"Failed to disable autostart: {e}")
+            pass
             return False
-
-
-
-
 
 
 class SensorMonitor(QThread):
@@ -257,7 +252,7 @@ class SensorMonitor(QThread):
             data = self._collect_data()
             self.data_updated.emit(data)
         except Exception as e:
-            print(f"Update once error: {e}")
+            pass
 
     def run(self):
         update_count = 0
@@ -267,12 +262,10 @@ class SensorMonitor(QThread):
                 data = self._collect_data()
                 self.data_updated.emit(data)
 
-                print(f"[{update_count:04d}] CPU={data['cpu_temp']}°C, GPU={data['gpu_temp']}°C, "
-                      f"Fan1={data['fan1_rpm']} RPM, Fan2={data['fan2_rpm']} RPM, "
-                      f"G-Mode={'ON' if data['g_mode'] else 'OFF'}")
+                pass
 
             except Exception as e:
-                print(f"Monitor error: {e}")
+                pass
 
             self.msleep(1000)
 
@@ -1267,7 +1260,7 @@ class MainWindow(QMainWindow):
             self.g_mode_button.set_state(data.get('power', {}).get('g_mode', False))
             
         except Exception as e:
-            print(f"Error syncing initial state: {e}")
+            pass
 
 
 def main():
@@ -1286,15 +1279,7 @@ def main():
     
     window.show()
 
-    print("=" * 60)
-    print(" Dell G15 Control Center - v4.0 DAEMON-ONLY")
-    print("=" * 60)
-    print("Mode: DAEMON CLIENT")
-    print("Root: NO")
-    print("Model: Dell G15 (via daemon)")
-    print("=" * 60)
-    print("Monitoring started - values should update every second...")
-    print("=" * 60)
+    print("Dell G15 Control Center started")
 
     sys.exit(app.exec())
 

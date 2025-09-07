@@ -1,11 +1,4 @@
-# Dell G15 G-Mode Key Mapping
-# Maps the G-Mode key (FN+F9) scancode 0x68 to KEY_PROG1
-# This allows the G15 Controller Commander to capture G-Mode key events
-
-# Dell G15 series keyboards
 evdev:atkbd:dmi:bvn*:bvr*:bd*:svnDell*:pn*G15*:pvr*
  KEYBOARD_KEY_68=prog1
-
-# Alternative match for AT Translated Set 2 keyboard on Dell systems
 evdev:input:b0011v0001p0001*
  KEYBOARD_KEY_68=prog1
