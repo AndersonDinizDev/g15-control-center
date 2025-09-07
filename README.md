@@ -35,75 +35,40 @@ Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 e
 
 ## Instalação
 
-### 1. Instalar Dependências do Sistema
-
-#### No Ubuntu/Debian/Linux Mint:
+### Instalação Automática (Recomendada)
 ```bash
-sudo apt update
-sudo apt install python3 python3-pip python3-venv acpi-call-dkms policykit-1 libxcb-cursor0
-```
-
-#### No Fedora:
-```bash
-sudo dnf install python3 python3-pip acpi_call polkit libxcb
-```
-
-#### No Arch Linux:
-```bash
-sudo pacman -S python python-pip polkit libxcb
-yay -S acpi_call # ou instalar do AUR
-```
-
-### 2. Clonar o Repositório
-```bash
+# Clone o repositório
 git clone https://github.com/AndersonDinizDev/g15-controller-commander.git
 cd g15-controller-commander
+
+# Execute o instalador automático
+sudo ./install.sh
 ```
 
-### 3. Configurar Ambiente Python
-```bash
-# Criar ambiente virtual
-python3 -m venv venv
-
-# Ativar ambiente virtual
-source venv/bin/activate
-
-# Instalar dependências Python
-pip install -r requirements.txt
-```
-
-### 4. Carregar Módulo ACPI
-```bash
-sudo modprobe acpi_call
-```
+**O instalador automático faz:**
+- Detecta hardware Dell G15 compatível
+- Instala todas as dependências automaticamente
+- Configura serviço systemd (auto-start no boot)
+- Integra com menu de aplicações
+- Mapeia tecla G-Mode (F9)
+- Configura permissões de segurança
 
 ## Uso
 
 ### Início Rápido
 
-**1. Primeiro, inicie o daemon (como root):**
-```bash
-# Certifique-se de estar no diretório do projeto
-cd g15-controller-commander
+**Após a instalação automática:**
 
-# Ativar ambiente virtual
-source venv/bin/activate
+**Interface Gráfica:**
+- Menu de aplicações → "Dell G15 Controller"
+- Ou execute: `g15-controller`
 
-# Iniciar daemon (requer root)
-sudo python3 g15_daemon.py
-```
+**Tecla G-Mode:**
+- Pressione `F9` para alternar G-Mode instantaneamente
 
-**2. Em outro terminal, execute a interface (usuário normal):**
-```bash
-# No mesmo diretório do projeto
-cd g15-controller-commander
-
-# Ativar ambiente virtual
-source venv/bin/activate
-
-# Executar interface (SEM sudo)
-python3 g15_controller_commander.py
-```
+**Monitoramento:**
+- Status do daemon: `systemctl status g15-daemon`
+- Ver logs: `journalctl -u g15-daemon -f`
 
 ### Nova Arquitetura
 - **Daemon**: Roda como root, controla hardware via ACPI/hwmon
@@ -188,15 +153,40 @@ O daemon mantém logs em `/var/log/g15-daemon.log` para debug:
 sudo tail -f /var/log/g15-daemon.log
 ```
 
+## Desinstalação
+
+Para remover completamente o Dell G15 Controller Commander:
+
+```bash
+cd g15-controller-commander
+sudo ./uninstall.sh
+```
+
+**O desinstalador remove:**
+- Todos os arquivos da aplicação (`/opt/g15-controller/`)
+- Serviço systemd (`g15-daemon.service`)
+- Atalho do menu de aplicações
+- Mapeamento da tecla G-Mode
+- Configurações e logs
+- Opcionalmente remove dependências não utilizadas
+
 ## Estrutura do Projeto
 ```
 g15-controller-commander/
-├── g15_controller_commander.py  # Interface cliente (PyQt6)
-├── g15_daemon.py               # Daemon de controle (root)
-├── requirements.txt            # Dependências Python
-├── README.md                  # Este arquivo
-├── .gitignore                 # Regras de ignorar Git
-└── venv/                      # Ambiente virtual (criado pelo usuário)
+├── src/                        # Código fonte
+│   ├── g15_controller_commander.py  # Interface cliente (PyQt6)
+│   ├── g15_daemon.py               # Daemon de controle (root)
+│   └── __init__.py
+├── system/                     # Arquivos de sistema
+│   ├── g15-daemon.service      # Serviço systemd
+│   ├── g15-controller-commander.desktop  # Atalho desktop
+│   ├── g15-controller-commander.svg      # Ícone
+│   └── 90-dell-g15-gmode.hwdb  # Mapeamento tecla G-Mode
+├── install.sh                  # Instalador automático
+├── uninstall.sh               # Desinstalador
+├── pyproject.toml             # Metadados modernos
+├── requirements.txt           # Dependências Python
+└── README.md                  # Este arquivo
 ```
 
 ## Aviso Legal

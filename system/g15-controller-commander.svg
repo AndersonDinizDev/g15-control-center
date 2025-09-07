@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#2196F3;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF9800;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF5722;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFC107;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <circle cx="64" cy="64" r="60" fill="url(#grad1)" stroke="#333" stroke-width="2"/>
+  
+  <!-- Laptop outline -->
+  <rect x="24" y="40" width="80" height="48" rx="4" ry="4" fill="#444" stroke="#666" stroke-width="1"/>
+  <rect x="28" y="44" width="72" height="32" rx="2" ry="2" fill="#000"/>
+  
+  <!-- Screen -->
+  <rect x="30" y="46" width="68" height="28" rx="1" ry="1" fill="#1a1a1a"/>
+  
+  <!-- Dell G15 text -->
+  <text x="64" y="58" text-anchor="middle" fill="#00ff00" font-family="Arial, sans-serif" font-size="8" font-weight="bold">DELL</text>
+  <text x="64" y="68" text-anchor="middle" fill="#0099ff" font-family="Arial, sans-serif" font-size="6" font-weight="bold">G15</text>
+  
+  <!-- Keyboard -->
+  <rect x="28" y="78" width="72" height="8" rx="1" ry="1" fill="#333"/>
+  
+  <!-- G-Mode key highlight -->
+  <rect x="90" y="79" width="8" height="6" rx="1" ry="1" fill="url(#grad2)" stroke="#ff0000" stroke-width="0.5"/>
+  <text x="94" y="84" text-anchor="middle" fill="#000" font-family="Arial, sans-serif" font-size="4" font-weight="bold">G</text>
+  
+  <!-- Fan symbols -->
+  <g transform="translate(45, 58)">
+    <circle cx="0" cy="0" r="3" fill="none" stroke="#00ff88" stroke-width="0.5"/>
+    <path d="M-2,-2 L2,2 M-2,2 L2,-2" stroke="#00ff88" stroke-width="0.5"/>
+  </g>
+  
+  <g transform="translate(83, 58)">
+    <circle cx="0" cy="0" r="3" fill="none" stroke="#ff8800" stroke-width="0.5"/>
+    <path d="M-2,-2 L2,2 M-2,2 L2,-2" stroke="#ff8800" stroke-width="0.5"/>
+  </g>
+  
+  <!-- Temperature indicators -->
+  <rect x="36" y="50" width="12" height="2" rx="1" fill="#4CAF50"/>
+  <rect x="80" y="50" width="12" height="2" rx="1" fill="#FF5722"/>
+  
+  <!-- Version badge -->
+  <circle cx="108" cy="20" r="12" fill="#9C27B0" stroke="#fff" stroke-width="1"/>
+  <text x="108" y="25" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="8" font-weight="bold">v1</text>
+</svg>
