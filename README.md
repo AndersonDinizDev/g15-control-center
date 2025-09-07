@@ -1,198 +1,206 @@
 # Dell G15 Control Center
 
-Centro de controle moderno e repleto de recursos para notebooks gamer Dell G15 executando Linux. Funciona com arquitetura client-daemon para máxima segurança, fornecendo monitoramento de hardware em tempo real e controle de ventoinhas.
+Centro de controle moderno para notebooks Dell G15 executando Linux. Oferece monitoramento em tempo real e controle de ventoinhas através de uma arquitetura client-daemon segura.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![PyQt6](https://img.shields.io/badge/PyQt6-6.4%2B-green)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-![Linux](https://img.shields.io/badge/OS-Linux-orange)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
+[![PyQt6](https://img.shields.io/badge/PyQt6-6.4%2B-green)](https://riverbankcomputing.com/software/pyqt/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![Linux](https://img.shields.io/badge/OS-Linux-orange)](https://kernel.org)
 
 ## Recursos
 
-- **Monitoramento de Temperatura em Tempo Real**: Temperaturas de CPU e GPU com atualizações ao vivo
-- **Monitoramento de Velocidade dos Ventoinhas**: Leituras RPM em tempo real para ventoinhas de CPU e GPU
-- **Controle de Modo de Energia**: Alterne entre modos Silencioso, Balanceado, Performance e Customizado
-- **Controle Manual de Ventoinhas**: Configurações personalizadas de boost de ventoinha no modo Customizado
-- **Alternância G-Mode**: Ativar/desativar modo gaming para resfriamento máximo
-- **Integração com Bandeja do Sistema**: Minimizar para bandeja com controles de acesso rápido
-- **Interface Moderna**: Interface limpa e responsiva com feedback visual em tempo real
-- **Arquitetura Segura**: Cliente sem root + Daemon com privilégios para controle de hardware
+### Monitoramento
+- **Temperaturas em Tempo Real**: CPU e GPU com atualizações ao vivo
+- **Velocidade das Ventoinhas**: Leituras RPM precisas via ACPI/hwmon
+- **Interface na Bandeja**: Acesso rápido sem ocupar área de trabalho
+
+### Controle de Energia
+- **4 Modos**: Silencioso, Balanceado, Performance e Personalizado
+- **Controle Manual**: Ajuste individual de ventoinhas no modo Personalizado
+- **G-Mode**: Resfriamento máximo ativado via tecla F9
+- **Persistência**: Configurações salvas e restauradas automaticamente
+
+### Arquitetura Segura
+- **Separação de Privilégios**: Interface sem root, daemon com privilégios mínimos
+- **Comunicação Segura**: Unix socket com autenticação por token
+- **Instalação Automática**: Script inteligente com detecção de hardware
 
 ## Requisitos
 
-### Requisitos do Sistema
-- **Sistema Operacional**: Linux (testado no Linux Mint, Ubuntu, Debian)
-- **Hardware**: Notebook gamer Dell G15 (5511, 5515, 5520, 5525, 5530, 5535)
-- **Python**: 3.8 ou superior
-- **Privilégios**: Daemon requer root, interface roda como usuário normal
+### Sistema
+- Dell G15 (modelos 5511, 5515, 5520, 5525, 5530, 5535)
+- Linux (Ubuntu, Debian, Mint, Pop!_OS)
+- Python 3.8+
 
 ### Dependências
-- **acpi-call-dkms**: Comunicação ACPI com BIOS
-- **policykit-1**: Privilégios de root
-- **libxcb-cursor0**: Interface Qt
-- **PyQt6**: Framework de GUI
-- **psutil**: Informações do sistema (opcional)
+Instaladas automaticamente pelo script:
+- acpi-call-dkms (comunicação ACPI)
+- PyQt6 (interface gráfica)
+- policykit-1 (elevação de privilégios)
 
 ## Instalação
 
-### Instalação Automática (Recomendada)
+### Método Automático (Recomendado)
+
 ```bash
-# Clone o repositório
 git clone https://github.com/AndersonDinizDev/g15-control-center.git
 cd g15-control-center
-
-# Execute o instalador automático
 sudo ./install.sh
 ```
 
-**O instalador automático faz:**
-- Detecta hardware Dell G15 compatível
-- Instala todas as dependências automaticamente
-- Configura serviço systemd (auto-start no boot)
-- Integra com menu de aplicações
+O instalador:
+- Detecta hardware Dell G15
+- Instala dependências necessárias
+- Configura daemon systemd
 - Mapeia tecla G-Mode (F9)
-- Configura permissões de segurança
+- Adiciona ao menu de aplicações
 
-## Uso
+### Verificação
 
-### Início Rápido
+```bash
+# Status do daemon
+systemctl status g15-daemon
 
-**Após a instalação automática:**
+# Abrir aplicação
+g15-controller
+```
 
-**Interface Gráfica:**
-- Menu de aplicações → "Dell G15 Control Center"
-- Ou execute: `g15-controller`
+## Como Usar
 
-**Tecla G-Mode:**
-- Pressione `F9` para alternar G-Mode instantaneamente
-
-**Monitoramento:**
-- Status do daemon: `systemctl status g15-daemon`
-- Ver logs: `journalctl -u g15-daemon -f`
-
-### Nova Arquitetura
-- **Daemon**: Roda como root, controla hardware via ACPI/hwmon
-- **Interface**: Roda como usuário, comunica com daemon via Unix socket
-- **Segurança**: Separação de privilégios, interface sem root
-
-### Visão Geral da Interface
-
-#### Aba Monitor
-- **Cartões de Temperatura**: Temperaturas de CPU e GPU ao vivo com status codificado por cores
-- **Cartões de Velocidade dos Ventoinhas**: Monitoramento RPM em tempo real para ambas as ventoinhas
-- **Controles Manuais de Ventoinhas**: Controles de boost individual (apenas modo Customizado)
-
-#### Aba Configurações
-- **Seletor de Modo de Energia**: Escolha entre 4 perfis de energia
-- **Botão G-Mode**: Alternar modo de resfriamento máximo
-- **Informações do Sistema**: Status de detecção de hardware
-
-#### Bandeja do Sistema
-- **Acesso Rápido**: Clique direito para exibição de temperatura e alternância G-Mode
-- **Minimizar para Bandeja**: Fechar janela para minimizar (aplicação continua executando)
-- **Exibição de Temperatura**: Temperaturas de CPU/GPU ao vivo no menu de contexto
-
-## Configuração
+### Interface Principal
+1. **Aba Monitor**: Temperaturas e RPM em tempo real
+2. **Aba Configurações**: Modos de energia e controles manuais
+3. **Bandeja do Sistema**: Acesso rápido via ícone na bandeja
 
 ### Modos de Energia
-- **Silencioso**: Baixo ruído, resfriamento conservador
-- **Balanceado**: Equilíbrio ideal entre performance e ruído
-- **Performance**: Máxima performance, velocidades de ventoinha mais altas
-- **Customizado**: Controle manual de ventoinha habilitado
-
-### Controle de Ventoinhas
-1. Selecionar modo de energia **Customizado**
-2. Habilitar controle **Manual** no cartão da ventoinha desejada
-3. Usar sliders ou botões predefinidos (0%, 25%, 50%, 75%, 100%)
-4. Mudanças aplicadas imediatamente
+- **Silencioso**: Baixo ruído, temperatura conservadora
+- **Balanceado**: Equilíbrio entre performance e ruído
+- **Performance**: Máxima performance, ventoinhas mais rápidas
+- **Personalizado**: Controle manual habilitado
 
 ### G-Mode
-- **Propósito**: Resfriamento máximo para jogos/cargas intensivas
-- **Efeito**: Substitui o modo de energia atual, define ventoinhas no máximo
-- **Alternar**: Via botão da interface principal ou menu da bandeja do sistema
+- **Ativação**: Tecla F9 ou botão na interface
+- **Função**: Resfriamento máximo para jogos intensivos
+- **Comportamento**: Sobrepõe configurações atuais
+
+### Controle Manual
+1. Selecione modo **Personalizado**
+2. Ative controle **Manual** na ventoinha desejada
+3. Ajuste com sliders ou botões predefinidos (25%, 50%, 75%, 100%)
+
+## Arquitetura Técnica
+
+### Componentes
+- **g15_control_center.py**: Interface PyQt6 (usuário normal)
+- **g15_daemon.py**: Daemon de controle (root)
+- **Unix Socket**: Comunicação segura com autenticação
+
+### Arquivos de Sistema
+- **Serviço**: `/etc/systemd/system/g15-daemon.service`
+- **Configurações**: `/etc/g15-daemon/config.json`
+- **Logs**: `/var/log/g15-daemon.log`
+- **Mapeamento de Tecla**: `/etc/udev/hwdb.d/90-dell-g15-gmode.hwdb`
 
 ## Solução de Problemas
 
-### Problemas Comuns
+### Daemon não inicia
+```bash
+# Verificar status
+systemctl status g15-daemon
 
-#### "G15 Daemon obrigatório"
-**Solução**: Primeiro iniciar o daemon:
-```bash
-sudo python3 g15_daemon.py
-```
-Depois executar a interface em outro terminal:
-```bash
-python3 g15_controller_commander.py
+# Ver logs
+journalctl -u g15-daemon -f
+
+# Reiniciar serviço
+sudo systemctl restart g15-daemon
 ```
 
-#### "ERROR: ACPI path not found"
-**Solução**: Instalar e carregar o módulo acpi_call:
+### Módulo ACPI
 ```bash
-sudo apt install acpi-call-dkms  # Ubuntu/Debian
+# Verificar se está carregado
+lsmod | grep acpi_call
+
+# Carregar manualmente
 sudo modprobe acpi_call
 ```
 
-#### "No Dell hwmon sensors found"
-**Solução**: Este é um aviso, não um erro. A aplicação usará apenas modo ACPI.
-
-#### Aplicação não mostra temperaturas reais
-**Solução**: Verificar se os sensores hwmon são detectados:
+### Sensores não detectados
 ```bash
+# Listar sensores disponíveis
 sensors | grep -E "(dell|fan|temp)"
+
+# Verificar hwmon
+ls /sys/class/hwmon/
 ```
 
-#### Problemas de interface Qt
-**Solução**: Instalar dependências Qt:
+### Interface não abre
 ```bash
-sudo apt install libxcb-cursor0 # Ubuntu/Debian
-```
+# Verificar dependências Qt
+sudo apt install --reinstall libxcb-cursor0
 
-### Logs do Daemon
-O daemon mantém logs em `/var/log/g15-daemon.log` para debug:
-```bash
-sudo tail -f /var/log/g15-daemon.log
+# Executar em modo debug
+python3 src/g15_control_center.py
 ```
 
 ## Desinstalação
-
-Para remover completamente o Dell G15 Control Center:
 
 ```bash
 cd g15-control-center
 sudo ./uninstall.sh
 ```
 
-**O desinstalador remove:**
-- Todos os arquivos da aplicação (`/opt/g15-controller/`)
-- Serviço systemd (`g15-daemon.service`)
-- Atalho do menu de aplicações
-- Mapeamento da tecla G-Mode
-- Configurações e logs
-- Opcionalmente remove dependências não utilizadas
+Remove completamente:
+- Aplicação e configurações
+- Serviço systemd  
+- Mapeamento de tecla G-Mode
+- Atalho do menu
+- Logs do sistema
 
 ## Estrutura do Projeto
+
 ```
 g15-control-center/
-├── src/                        # Código fonte
-│   ├── g15_control_center.py  # Interface cliente (PyQt6)
-│   ├── g15_daemon.py               # Daemon de controle (root)
+├── src/
+│   ├── g15_control_center.py    # Interface cliente
+│   ├── g15_daemon.py            # Daemon de controle
 │   └── __init__.py
-├── system/                     # Arquivos de sistema
-│   ├── g15-daemon.service      # Serviço systemd
+├── system/
+│   ├── g15-daemon.service       # Serviço systemd
 │   ├── g15-control-center.desktop  # Atalho desktop
-│   ├── g15-control-center.svg      # Ícone
-│   └── 90-dell-g15-gmode.hwdb  # Mapeamento tecla G-Mode
-├── install.sh                  # Instalador automático
-├── uninstall.sh               # Desinstalador
-├── pyproject.toml             # Metadados modernos
-├── requirements.txt           # Dependências Python
-└── README.md                  # Este arquivo
+│   ├── g15-control-center.svg   # Ícone
+│   └── 90-dell-g15-gmode.hwdb   # Mapeamento G-Mode
+├── install.sh                   # Instalador automático
+├── uninstall.sh                 # Desinstalador
+├── pyproject.toml              # Metadados do projeto
+├── requirements.txt            # Dependências Python
+└── README.md
 ```
 
-## Aviso Legal
+## Contribuindo
 
-Este software controla diretamente componentes de hardware. Use por sua própria conta e risco. Os autores não são responsáveis por qualquer dano ao hardware que possa ocorrer com o uso deste software.
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/nova-feature`)
+3. Commit suas mudanças (`git commit -am 'Add nova feature'`)
+4. Push para a branch (`git push origin feature/nova-feature`)
+5. Abra um Pull Request
+
+## Segurança
+
+- Daemon roda com privilégios mínimos necessários
+- Comunicação via Unix socket com permissões restritas
+- Validação de todas as operações ACPI
+- Rate limiting para prevenir abuso
 
 ## Licença
 
-Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
+Este projeto está licenciado sob a Licença MIT. Veja [LICENSE](LICENSE) para detalhes.
+
+## Aviso
+
+Este software controla componentes de hardware diretamente. Use por sua própria conta e risco. Os desenvolvedores não se responsabilizam por danos ao hardware.
+
+---
+
+**Links Úteis:**
+- [Issues](https://github.com/AndersonDinizDev/g15-control-center/issues) - Reportar problemas
+- [Releases](https://github.com/AndersonDinizDev/g15-control-center/releases) - Downloads
