@@ -1,165 +1,123 @@
 #!/usr/bin/env python3
+"""Dell G15 Control Center — PyQt6 desktop UI."""
 
-import sys
-import os
-import subprocess
-import random
-import time
-import glob
+from __future__ import annotations
+
 import json
+import os
 import socket
-import argparse
-from pathlib import Path
+import sys
+import time
 from enum import Enum
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QGridLayout, QGroupBox, QLabel, QSlider, QPushButton,
-    QSystemTrayIcon, QMenu, QMessageBox, QFrame, QProgressBar,
-    QGraphicsDropShadowEffect, QTabWidget, QCheckBox
-)
-from PyQt6.QtCore import (
-    Qt, QTimer, QThread, pyqtSignal, QSettings,
-    QPropertyAnimation, QEasingCurve
-)
+from pathlib import Path
+from typing import NamedTuple
+
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import (
-    QIcon, QPixmap, QPainter, QFont, QAction, QColor,
-    QBrush, QPen, QLinearGradient, QRadialGradient
+    QAction, QBrush, QColor, QFont, QIcon, QPainter, QPen, QPixmap,
+    QRadialGradient,
 )
+from PyQt6.QtWidgets import (
+    QApplication, QCheckBox, QFrame, QHBoxLayout, QLabel, QMainWindow,
+    QMenu, QMessageBox, QProgressBar, QPushButton, QSlider, QSystemTrayIcon,
+    QTabWidget, QVBoxLayout, QWidget,
+)
+
+
+SOCKET_PATH = "/tmp/g15-daemon.sock"
+DAEMON_TIMEOUT = 5.0
+DATA_CACHE_SECONDS = 1.0
+MONITOR_INTERVAL_MS = 1000
+
+
+class PowerInfo(NamedTuple):
+    label: str
+    profile: str
+    color: str
 
 
 class PowerMode(Enum):
-    QUIET = ("Silencioso", "0xa3", "#4CAF50")
-    BALANCED = ("Balanceado", "0xa0", "#2196F3")
-    PERFORMANCE = ("Performance", "0xa1", "#FF9800")
-    CUSTOM = ("Personalizado", "0xa2", "#9C27B0")
+    QUIET = PowerInfo("Silencioso", "quiet", "#4CAF50")
+    BALANCED = PowerInfo("Balanceado", "balanced", "#2196F3")
+    PERFORMANCE = PowerInfo("Performance", "performance", "#FF9800")
+    CUSTOM = PowerInfo("Personalizado", "inherit", "#9C27B0")
 
 
 class G15DaemonClient:
     def __init__(self):
-        self.socket_path = "/tmp/g15-daemon.sock"
+        self.socket_path = SOCKET_PATH
         self.daemon_available = self._check_daemon()
-        self.session_token = None
-        self._cached_data = None
-        self._last_update = 0
-        self._cache_timeout = 1.0
-
-        if self.daemon_available:
-            self._authenticate()
-        else:
-            print("G15 Daemon not available")
+        self._cached_data: dict | None = None
+        self._last_update: float = 0.0
 
     def _check_daemon(self) -> bool:
-        try:
-            if not os.path.exists(self.socket_path):
-                return False
-
-            try:
-                stat_info = os.stat(self.socket_path)
-            except Exception as e:
-                return False
-
-            test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            test_socket.settimeout(1.0)
-            test_socket.connect(self.socket_path)
-            test_socket.close()
-            return True
-        except Exception as e:
+        if not os.path.exists(self.socket_path):
             return False
-
-    def _authenticate(self):
         try:
-            response = self._send_request({"action": "authenticate"})
-            if response.get("status") == "success":
-                self.session_token = response.get("token")
-        except:
-            self.daemon_available = False
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(1.0)
+                s.connect(self.socket_path)
+            return True
+        except OSError:
+            return False
 
     def _send_request(self, request_data: dict) -> dict:
         if not self.daemon_available:
             return {"status": "error", "message": "Daemon not available"}
-
         try:
-            client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            client_socket.settimeout(5.0)
-            client_socket.connect(self.socket_path)
-
-            if self.session_token and "token" not in request_data:
-                request_data["token"] = self.session_token
-
-            request_json = json.dumps(request_data)
-            client_socket.send(request_json.encode('utf-8'))
-
-            response_data = client_socket.recv(4096)
-            client_socket.close()
-
-            return json.loads(response_data.decode('utf-8'))
-
-        except Exception as e:
-            pass
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(DAEMON_TIMEOUT)
+                s.connect(self.socket_path)
+                s.send(json.dumps(request_data).encode("utf-8"))
+                response_data = s.recv(4096)
+            return json.loads(response_data.decode("utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
             self.daemon_available = False
             return {"status": "error", "message": str(e)}
 
     def _get_all_data(self) -> dict:
-        import time
-
-        current_time = time.time()
-        if (self._cached_data is None or
-            current_time - self._last_update > self._cache_timeout):
-
+        now = time.time()
+        if self._cached_data is None or now - self._last_update > DATA_CACHE_SECONDS:
             response = self._send_request({"action": "get_all_data"})
             if response.get("status") == "success":
                 self._cached_data = response.get("data", {})
-                self._last_update = current_time
-            else:
-                self._cached_data = {
-                    "temps": {"cpu_temp": 45, "gpu_temp": 50},
-                    "fans": {
-                        "fan1_rpm": 2500, "fan2_rpm": 2300, 
-                        "fan1_boost": 0, "fan2_boost": 0,
-                        "fan1_manual": False, "fan2_manual": False
-                    },
-                    "power": {"current_mode": "Balanceado", "g_mode": False},
-                    "status": {"model": "Unknown", "hwmon_available": False, "g_mode_active": False}
-                }
+                self._last_update = now
+            elif self._cached_data is None:
+                self._cached_data = {}
+        return self._cached_data or {}
 
-        return self._cached_data
+    def invalidate_cache(self):
+        self._cached_data = None
 
     def get_cpu_temp(self) -> int:
-        data = self._get_all_data()
-        return data.get("temps", {}).get("cpu_temp", 45)
+        return self._get_all_data().get("temps", {}).get("cpu_temp", 0)
 
     def get_gpu_temp(self) -> int:
-        data = self._get_all_data()
-        return data.get("temps", {}).get("gpu_temp", 50)
+        return self._get_all_data().get("temps", {}).get("gpu_temp", 0)
 
     def get_fan_rpm(self, fan_id: int) -> int:
-        data = self._get_all_data()
-        return data.get("fans", {}).get(f"fan{fan_id}_rpm", 2500 if fan_id == 1 else 2300)
+        return self._get_all_data().get("fans", {}).get(f"fan{fan_id}_rpm", 0)
 
     def get_fan_boost(self, fan_id: int) -> int:
-        data = self._get_all_data()
-        return data.get("fans", {}).get(f"fan{fan_id}_boost", 0)
-    
+        return self._get_all_data().get("fans", {}).get(f"fan{fan_id}_boost", 0)
+
     def get_fan_manual(self, fan_id: int) -> bool:
-        data = self._get_all_data()
-        return data.get("fans", {}).get(f"fan{fan_id}_manual", False)
+        return self._get_all_data().get("fans", {}).get(f"fan{fan_id}_manual", False)
 
     def get_power_mode(self) -> PowerMode:
-        data = self._get_all_data()
-        mode_name = data.get("power", {}).get("current_mode", "Balanceado")
+        label = self._get_all_data().get("power", {}).get("current_mode", "Balanceado")
         for mode in PowerMode:
-            if mode.value[0] == mode_name:
+            if mode.value.label == label:
                 return mode
         return PowerMode.BALANCED
 
     def get_g_mode_status(self) -> bool:
-        data = self._get_all_data()
-        return data.get("power", {}).get("g_mode", False)
+        return self._get_all_data().get("power", {}).get("g_mode", False)
 
     def set_power_mode(self, mode: PowerMode) -> bool:
         response = self._send_request({
             "action": "set_power_mode",
-            "mode": mode.value[0]
+            "mode": mode.value.label,
         })
         return response.get("status") == "success"
 
@@ -167,7 +125,7 @@ class G15DaemonClient:
         response = self._send_request({
             "action": "set_fan_boost",
             "fan_id": fan_id,
-            "percentage": percentage
+            "percentage": percentage,
         })
         return response.get("status") == "success"
 
@@ -177,24 +135,10 @@ class G15DaemonClient:
 
 
 class AutoStartManager:
-    def __init__(self):
-        self.autostart_dir = Path.home() / '.config' / 'autostart'
-        self.desktop_file = self.autostart_dir / 'g15-controller.desktop'
-
-    def is_enabled(self) -> bool:
-        return self.desktop_file.exists()
-
-    def enable(self) -> bool:
-        try:
-            self.autostart_dir.mkdir(parents=True, exist_ok=True)
-
-            script_path = os.path.abspath(__file__)
-            python_path = sys.executable
-
-            desktop_content = f"""[Desktop Entry]
+    AUTOSTART_TEMPLATE = """[Desktop Entry]
 Name=Dell G15 Control Center
 Comment=Dell G15 hardware monitoring and control
-Exec={python_path} "{script_path}"
+Exec={python} "{script}"
 Icon=preferences-system
 Terminal=false
 Type=Application
@@ -204,24 +148,31 @@ X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=5
 """
 
-            self.desktop_file.write_text(desktop_content)
-            os.chmod(self.desktop_file, 0o755)
+    def __init__(self):
+        self.autostart_dir = Path.home() / ".config" / "autostart"
+        self.desktop_file = self.autostart_dir / "g15-controller.desktop"
 
-            pass
+    def is_enabled(self) -> bool:
+        return self.desktop_file.exists()
+
+    def enable(self) -> bool:
+        try:
+            self.autostart_dir.mkdir(parents=True, exist_ok=True)
+            content = self.AUTOSTART_TEMPLATE.format(
+                python=sys.executable,
+                script=os.path.abspath(__file__),
+            )
+            self.desktop_file.write_text(content)
+            self.desktop_file.chmod(0o755)
             return True
-
-        except Exception as e:
-            pass
+        except OSError:
             return False
 
     def disable(self) -> bool:
         try:
-            if self.desktop_file.exists():
-                self.desktop_file.unlink()
-                pass
+            self.desktop_file.unlink(missing_ok=True)
             return True
-        except Exception as e:
-            pass
+        except OSError:
             return False
 
 
@@ -233,41 +184,28 @@ class SensorMonitor(QThread):
         self.daemon_client = daemon_client
         self.running = True
 
-    def _collect_data(self):
+    def _collect_data(self) -> dict:
+        client = self.daemon_client
         return {
-            'cpu_temp': self.daemon_client.get_cpu_temp(),
-            'gpu_temp': self.daemon_client.get_gpu_temp(),
-            'fan1_rpm': self.daemon_client.get_fan_rpm(1),
-            'fan2_rpm': self.daemon_client.get_fan_rpm(2),
-            'fan1_boost': self.daemon_client.get_fan_boost(1),
-            'fan2_boost': self.daemon_client.get_fan_boost(2),
-            'fan1_manual': self.daemon_client.get_fan_manual(1),
-            'fan2_manual': self.daemon_client.get_fan_manual(2),
-            'power_mode': self.daemon_client.get_power_mode(),
-            'g_mode': self.daemon_client.get_g_mode_status()
+            "cpu_temp": client.get_cpu_temp(),
+            "gpu_temp": client.get_gpu_temp(),
+            "fan1_rpm": client.get_fan_rpm(1),
+            "fan2_rpm": client.get_fan_rpm(2),
+            "fan1_boost": client.get_fan_boost(1),
+            "fan2_boost": client.get_fan_boost(2),
+            "fan1_manual": client.get_fan_manual(1),
+            "fan2_manual": client.get_fan_manual(2),
+            "power_mode": client.get_power_mode(),
+            "g_mode": client.get_g_mode_status(),
         }
 
     def update_once(self):
-        try:
-            data = self._collect_data()
-            self.data_updated.emit(data)
-        except Exception as e:
-            pass
+        self.data_updated.emit(self._collect_data())
 
     def run(self):
-        update_count = 0
         while self.running:
-            try:
-                update_count += 1
-                data = self._collect_data()
-                self.data_updated.emit(data)
-
-                pass
-
-            except Exception as e:
-                pass
-
-            self.msleep(1000)
+            self.data_updated.emit(self._collect_data())
+            self.msleep(MONITOR_INTERVAL_MS)
 
     def stop(self):
         self.running = False
@@ -697,7 +635,7 @@ class PowerModeSelector(QFrame):
         layout.addWidget(title)
 
         for mode in PowerMode:
-            btn = QPushButton(f"  {mode.value[0]}")
+            btn = QPushButton(f"  {mode.value.label}")
             btn.setCheckable(True)
             btn.setFixedHeight(38)
             btn.clicked.connect(lambda checked, m=mode: self.select_mode(m))
@@ -706,7 +644,7 @@ class PowerModeSelector(QFrame):
             layout.addWidget(btn)
 
     def update_button_style(self, btn, mode, selected):
-        color = mode.value[2]
+        color = mode.value.color
         if selected:
             btn.setStyleSheet(f"""
                 QPushButton {{
@@ -1144,7 +1082,7 @@ class MainWindow(QMainWindow):
 
     def toggle_g_mode(self, state=None):
         self.daemon_client.toggle_g_mode()
-        self.daemon_client._cached_data = None
+        self.daemon_client.invalidate_cache()
         if hasattr(self, 'monitor'):
             self.monitor.update_once()
 
@@ -1175,12 +1113,11 @@ class MainWindow(QMainWindow):
 
     def on_fan_boost_changed(self, fan_id: int, boost: int):
         if self.daemon_client.get_power_mode() != PowerMode.CUSTOM:
-            QMessageBox.warning(self, "Aviso de Modo",
-                "Por favor, selecione o modo Personalizado primeiro.")
-            return
-
+            # Automagicamente muda para personalizado mantendo o perfil atual
+            self.power_selector.select_mode(PowerMode.CUSTOM)
+        
         self.daemon_client.set_fan_boost(fan_id, boost)
-        self.daemon_client._cached_data = None
+        self.daemon_client.invalidate_cache()
 
     def on_autostart_toggled(self, enabled: bool):
         try:
@@ -1237,30 +1174,18 @@ class MainWindow(QMainWindow):
             event.accept()
     
     def sync_initial_state(self):
-        try:
-            data = self.daemon_client._get_all_data()
-            power_mode = self.daemon_client.get_power_mode()
-            
-            if power_mode == PowerMode.CUSTOM:
-                fans_data = data.get('fans', {})
-                
-                if fans_data.get('fan1_manual', False):
-                    self.fan1_control.sync_manual_state(
-                        True,
-                        fans_data.get('fan1_boost', 0)
-                    )
-                
-                if fans_data.get('fan2_manual', False):
-                    self.fan2_control.sync_manual_state(
-                        True,
-                        fans_data.get('fan2_boost', 0)
-                    )
-                    
-            self.power_selector.set_mode(power_mode)
-            self.g_mode_button.set_state(data.get('power', {}).get('g_mode', False))
-            
-        except Exception as e:
-            pass
+        data = self.daemon_client._get_all_data()
+        power_mode = self.daemon_client.get_power_mode()
+
+        if power_mode == PowerMode.CUSTOM:
+            fans = data.get("fans", {})
+            if fans.get("fan1_manual", False):
+                self.fan1_control.sync_manual_state(True, fans.get("fan1_boost", 0))
+            if fans.get("fan2_manual", False):
+                self.fan2_control.sync_manual_state(True, fans.get("fan2_boost", 0))
+
+        self.power_selector.set_mode(power_mode)
+        self.g_mode_button.set_state(data.get("power", {}).get("g_mode", False))
 
 
 def main():

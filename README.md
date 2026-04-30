@@ -1,46 +1,43 @@
-# Dell G15 Control Center
+# Dell G15 Control Center (Bazzite / Fedora Atomic)
 
-Centro de controle moderno para notebooks Dell G15 executando Linux. Oferece monitoramento em tempo real e controle de ventoinhas através de uma arquitetura client-daemon segura.
+Centro de controle nativo para notebooks Dell G15 no Linux. Construído sobre `sysfs`, `platform_profile` e o driver `alienware_wmi` do Kernel — sem DKMS, sem módulos out-of-tree.
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://python.org)
 [![PyQt6](https://img.shields.io/badge/PyQt6-6.4%2B-green)](https://riverbankcomputing.com/software/pyqt/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Linux](https://img.shields.io/badge/OS-Linux-orange)](https://kernel.org)
+[![Linux](https://img.shields.io/badge/OS-Bazzite%20%7C%20Fedora-orange)](https://bazzite.gg)
 
 ## Recursos
 
 ### Monitoramento
-- **Temperaturas em Tempo Real**: CPU e GPU com atualizações ao vivo
-- **Velocidade das Ventoinhas**: Leituras RPM precisas via ACPI/hwmon
-- **Interface na Bandeja**: Acesso rápido sem ocupar área de trabalho
+- **Temperaturas**: CPU e GPU lidas via `hwmon` do `alienware_wmi` (com fallback de leitura para `dell_smm` / `dell_ddv`).
+- **Ventoinhas**: RPM em tempo real do `alienware_wmi`.
 
-### Controle de Energia
-- **4 Modos**: Silencioso, Balanceado, Performance e Personalizado
-- **Controle Manual**: Ajuste individual de ventoinhas no modo Personalizado
-- **G-Mode**: Resfriamento máximo ativado via tecla F9
-- **Persistência**: Configurações salvas e restauradas automaticamente
+### Controle
+- **Power Profiles** (`/sys/firmware/acpi/platform_profile`): Silencioso, Balanceado, Performance.
+- **Personalizado**: herda o profile atual e permite ajuste manual de boost da ventoinha de CPU/GPU (`fan{1,2}_boost` do `alienware_wmi`).
+- **G-Mode**: ativação via `/sys/devices/platform/alienware-wmi/thermal_mode` (mesmo comportamento do Alienware Command Center).
+- **Tecla F9 (G-Mode)**: mapeada via `udev/hwdb` (scancode 0x68 → `KEY_PROG1`) e capturada pelo daemon.
+- **Persistência**: configuração em `/etc/g15-daemon/config.json`, restaurada no boot.
 
-### Arquitetura Segura
-- **Separação de Privilégios**: Interface sem root, daemon com privilégios mínimos
-- **Comunicação Segura**: Unix socket com autenticação por token
-- **Instalação Automática**: Script inteligente com detecção de hardware
+### Compatibilidade Atômica
+- Instalação em `/var/opt/g15-controller` (respeita `/usr` imutável).
+- Serviço systemd com logs via `journald`.
+- Sem dependência de DKMS — não quebra em atualizações de Kernel.
 
 ## Requisitos
 
-### Sistema
-- Dell G15 (modelos 5511, 5515, 5520, 5525, 5530, 5535)
-- Linux (Ubuntu, Debian, Mint, Pop!_OS)
-- Python 3.8+
+### Hardware / Kernel
+- Dell G15 com driver `alienware_wmi` carregado (`lsmod | grep alienware_wmi`).
+  Disponível nativamente em Kernels Linux 6.x+ na maioria das distros baseadas em Fedora.
+- Sem o `alienware_wmi`, o controle de ventoinhas e G-Mode **não funciona** — o programa só monitoraria sensores.
 
-### Dependências
-Instaladas automaticamente pelo script:
-- acpi-call-dkms (comunicação ACPI)
-- PyQt6 (interface gráfica)
-- policykit-1 (elevação de privilégios)
+### Software
+- Bazzite OS, Fedora Silverblue/Kinoite/Workstation (ou qualquer distro com systemd + `alienware_wmi`).
+- Python 3.9+
+- PyQt6 6.4+ (instalado automaticamente em venv pelo instalador).
 
 ## Instalação
-
-### Método Automático (Recomendado)
 
 ```bash
 git clone https://github.com/AndersonDinizDev/g15-control-center.git
@@ -49,158 +46,60 @@ sudo ./install.sh
 ```
 
 O instalador:
-- Detecta hardware Dell G15
-- Instala dependências necessárias
-- Configura daemon systemd
-- Mapeia tecla G-Mode (F9)
-- Adiciona ao menu de aplicações
+1. Verifica presença do `alienware_wmi`.
+2. Instala em `/var/opt/g15-controller` com venv isolado.
+3. Habilita o serviço `g15-daemon` no systemd.
+4. Mapeia a tecla **G-Mode (F9)** via udev/hwdb.
+5. Cria atalho no menu de aplicações.
 
-### Verificação
+> **Nota**: após a primeira instalação, pode ser necessário **reiniciar uma vez** para o kernel re-aplicar o keymap da tecla G-Mode no `atkbd`.
+
+## Uso
 
 ```bash
-# Status do daemon
-systemctl status g15-daemon
-
-# Abrir aplicação
-g15-controller
+g15-controller          # abre a interface
+sudo systemctl status g15-daemon
+journalctl -u g15-daemon -f
 ```
 
-## Como Usar
-
-### Interface Principal
-1. **Aba Monitor**: Temperaturas e RPM em tempo real
-2. **Aba Configurações**: Modos de energia e controles manuais
-3. **Bandeja do Sistema**: Acesso rápido via ícone na bandeja
-
 ### Modos de Energia
-- **Silencioso**: Baixo ruído, temperatura conservadora
-- **Balanceado**: Equilíbrio entre performance e ruído
-- **Performance**: Máxima performance, ventoinhas mais rápidas
-- **Personalizado**: Controle manual habilitado
-
-### G-Mode
-- **Ativação**: Tecla F9 ou botão na interface
-- **Função**: Resfriamento máximo para jogos intensivos
-- **Comportamento**: Sobrepõe configurações atuais
-
-### Controle Manual
-1. Selecione modo **Personalizado**
-2. Ative controle **Manual** na ventoinha desejada
-3. Ajuste com sliders ou botões predefinidos (25%, 50%, 75%, 100%)
-
-## Arquitetura Técnica
-
-### Componentes
-- **g15_control_center.py**: Interface PyQt6 (usuário normal)
-- **g15_daemon.py**: Daemon de controle (root)
-- **Unix Socket**: Comunicação segura com autenticação
-
-### Arquivos de Sistema
-- **Serviço**: `/etc/systemd/system/g15-daemon.service`
-- **Configurações**: `/etc/g15-daemon/config.json`
-- **Logs**: `/var/log/g15-daemon.log`
-- **Mapeamento de Tecla**: `/etc/udev/hwdb.d/90-dell-g15-gmode.hwdb`
+- **Silencioso / Balanceado / Performance**: aplicam o profile correspondente do kernel; o daemon desfaz qualquer boost manual e devolve o controle das ventoinhas para a curva da BIOS.
+- **Personalizado**: mantém o profile atual e adiciona o boost manual definido nos sliders. O `fan{1,2}_boost` é aditivo sobre a curva — o EC continua reagindo às temperaturas, só ventoinha um pouco mais.
+- **G-Mode (F9)**: força performance + boost máximo via `thermal_mode=0xab`. Ao desativar, o daemon restaura o estado anterior (incluindo boosts manuais salvos).
 
 ## Solução de Problemas
 
 ### Daemon não inicia
 ```bash
-# Verificar status
-systemctl status g15-daemon
-
-# Ver logs
 journalctl -u g15-daemon -f
-
-# Reiniciar serviço
-sudo systemctl restart g15-daemon
 ```
 
-### Módulo ACPI
+### Sliders sem efeito
+Confirme que o `alienware_wmi` está carregado e expõe os arquivos de boost:
 ```bash
-# Verificar se está carregado
-lsmod | grep acpi_call
-
-# Carregar manualmente
-sudo modprobe acpi_call
+ls /sys/class/hwmon/hwmon*/fan*_boost 2>/dev/null
+lsmod | grep alienware_wmi
 ```
+Se nada aparecer, seu kernel não tem o driver e o controle de ventoinhas não funcionará.
 
-### Sensores não detectados
+### Tecla G-Mode não responde
 ```bash
-# Listar sensores disponíveis
-sensors | grep -E "(dell|fan|temp)"
-
-# Verificar hwmon
-ls /sys/class/hwmon/
+sudo evtest /dev/input/by-path/platform-i8042-serio-0-event-kbd
 ```
+Aperte F9 — deve aparecer `KEY_PROG1` (code 148). Se aparecer `KEY_UNKNOWN`, reinicie uma vez para o atkbd recarregar o keymap.
 
-### Interface não abre
-```bash
-# Verificar dependências Qt
-sudo apt install --reinstall libxcb-cursor0
-
-# Executar em modo debug
-python3 src/g15_control_center.py
-```
+### Permissão no socket
+O socket fica em `/tmp/g15-daemon.sock` com `0666`. Se a UI não conectar, verifique se o daemon está ativo (`systemctl is-active g15-daemon`).
 
 ## Desinstalação
 
 ```bash
-cd g15-control-center
 sudo ./uninstall.sh
 ```
 
-Remove completamente:
-- Aplicação e configurações
-- Serviço systemd  
-- Mapeamento de tecla G-Mode
-- Atalho do menu
-- Logs do sistema
-
-## Estrutura do Projeto
-
-```
-g15-control-center/
-├── src/
-│   ├── g15_control_center.py    # Interface cliente
-│   ├── g15_daemon.py            # Daemon de controle
-│   └── __init__.py
-├── system/
-│   ├── g15-daemon.service       # Serviço systemd
-│   ├── g15-control-center.desktop  # Atalho desktop
-│   ├── g15-control-center.svg   # Ícone
-│   └── 90-dell-g15-gmode.hwdb   # Mapeamento G-Mode
-├── install.sh                   # Instalador automático
-├── uninstall.sh                 # Desinstalador
-├── pyproject.toml              # Metadados do projeto
-├── requirements.txt            # Dependências Python
-└── README.md
-```
-
-## Contribuindo
-
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/nova-feature`)
-3. Commit suas mudanças (`git commit -am 'Add nova feature'`)
-4. Push para a branch (`git push origin feature/nova-feature`)
-5. Abra um Pull Request
-
-## Segurança
-
-- Daemon roda com privilégios mínimos necessários
-- Comunicação via Unix socket com permissões restritas
-- Validação de todas as operações ACPI
-- Rate limiting para prevenir abuso
-
-## Licença
-
-Este projeto está licenciado sob a Licença MIT. Veja [LICENSE](LICENSE) para detalhes.
-
 ## Aviso
 
-Este software controla componentes de hardware diretamente. Use por sua própria conta e risco. Os desenvolvedores não se responsabilizam por danos ao hardware.
+Este software interage diretamente com sysfs/ACPI. Use por sua conta e risco.
 
 ---
-
-**Links Úteis:**
-- [Issues](https://github.com/AndersonDinizDev/g15-control-center/issues) - Reportar problemas
-- [Releases](https://github.com/AndersonDinizDev/g15-control-center/releases) - Downloads
+**Desenvolvido para a comunidade Dell G15 no Linux.**
