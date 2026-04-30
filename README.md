@@ -1,6 +1,6 @@
 # Dell G15 Control Center (Bazzite / Fedora Atomic)
 
-Centro de controle nativo para notebooks Dell G15 no Linux. Construído sobre `sysfs`, `platform_profile` e o driver `alienware_wmi` do Kernel — sem DKMS, sem módulos out-of-tree.
+Centro de controle nativo para notebooks Dell G15 no Linux. Construído sobre `sysfs`, `platform_profile` e o driver `alienware_wmi` do Kernel. Sem DKMS, sem módulos out-of-tree.
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://python.org)
 [![PyQt6](https://img.shields.io/badge/PyQt6-6.4%2B-green)](https://riverbankcomputing.com/software/pyqt/)
@@ -23,14 +23,14 @@ Centro de controle nativo para notebooks Dell G15 no Linux. Construído sobre `s
 ### Compatibilidade Atômica
 - Instalação em `/var/opt/g15-controller` (respeita `/usr` imutável).
 - Serviço systemd com logs via `journald`.
-- Sem dependência de DKMS — não quebra em atualizações de Kernel.
+- Sem dependência de DKMS, não quebra em atualizações de Kernel.
 
 ## Requisitos
 
 ### Hardware / Kernel
 - Dell G15 com driver `alienware_wmi` carregado (`lsmod | grep alienware_wmi`).
   Disponível nativamente em Kernels Linux 6.x+ na maioria das distros baseadas em Fedora.
-- Sem o `alienware_wmi`, o controle de ventoinhas e G-Mode **não funciona** — o programa só monitoraria sensores.
+- Sem o `alienware_wmi`, o controle de ventoinhas e G-Mode **não funciona**. O programa só monitoraria sensores.
 
 ### Software
 - Bazzite OS, Fedora Silverblue/Kinoite/Workstation (ou qualquer distro com systemd + `alienware_wmi`).
@@ -64,7 +64,7 @@ journalctl -u g15-daemon -f
 
 ### Modos de Energia
 - **Silencioso / Balanceado / Performance**: aplicam o profile correspondente do kernel; o daemon desfaz qualquer boost manual e devolve o controle das ventoinhas para a curva da BIOS.
-- **Personalizado**: mantém o profile atual e adiciona o boost manual definido nos sliders. O `fan{1,2}_boost` é aditivo sobre a curva — o EC continua reagindo às temperaturas, só ventoinha um pouco mais.
+- **Personalizado**: mantém o profile atual e adiciona o boost manual definido nos sliders. O `fan{1,2}_boost` é aditivo sobre a curva: o EC continua reagindo às temperaturas, só ventoinha um pouco mais.
 - **G-Mode (F9)**: força performance + boost máximo via `thermal_mode=0xab`. Ao desativar, o daemon restaura o estado anterior (incluindo boosts manuais salvos).
 
 ## Solução de Problemas
@@ -86,7 +86,7 @@ Se nada aparecer, seu kernel não tem o driver e o controle de ventoinhas não f
 ```bash
 sudo evtest /dev/input/by-path/platform-i8042-serio-0-event-kbd
 ```
-Aperte F9 — deve aparecer `KEY_PROG1` (code 148). Se aparecer `KEY_UNKNOWN`, reinicie uma vez para o atkbd recarregar o keymap.
+Aperte F9: deve aparecer `KEY_PROG1` (code 148). Se aparecer `KEY_UNKNOWN`, reinicie uma vez para o atkbd recarregar o keymap.
 
 ### Permissão no socket
 O socket fica em `/tmp/g15-daemon.sock` com `0666`. Se a UI não conectar, verifique se o daemon está ativo (`systemctl is-active g15-daemon`).
